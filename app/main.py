@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from .database import engine, Base, SessionLocal
 from .models import User
 from .auth import hash_pin, verify_pin
+from .models import User, Article
 
 app = FastAPI(title="Formteile Fritsch Shopfloor API")
 
@@ -57,3 +58,36 @@ def login(pin: str, db: Session = Depends(get_db)):
             }
 
     return {"message": "PIN falsch"}
+
+# ARTIKEL ERSTELLEN
+@app.post("/articles")
+def create_article(
+    artikelnummer: str,
+    bezeichnung: str,
+    material: str,
+    werkzeug: str,
+    kavitaeten: int,
+    revision: str,
+    db: Session = Depends(get_db)
+):
+
+    article = Article(
+        artikelnummer=artikelnummer,
+        bezeichnung=bezeichnung,
+        material=material,
+        werkzeug=werkzeug,
+        kavitaeten=kavitaeten,
+        revision=revision
+    )
+
+    db.add(article)
+    db.commit()
+    db.refresh(article)
+
+    return {"message": "Artikel erstellt", "artikelnummer": artikelnummer}
+
+# ALLE ARTIKEL
+@app.get("/articles")
+def get_articles(db: Session = Depends(get_db)):
+    articles = db.query(Article).all()
+    return articles

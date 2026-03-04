@@ -11,3 +11,23 @@ class User(Base):
     role = Column(String, nullable=False)
     pin_hash = Column(String, nullable=False)
     active = Column(Boolean, default=True)
+
+from sqlalchemy import Column, String, Integer
+import uuid
+from sqlalchemy.dialects.postgresql import UUID
+from .database import Base
+
+class Article(Base):
+    __tablename__ = "articles"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    artikelnummer = Column(String, nullable=False)
+    bezeichnung = Column(String)
+
+    material = Column(String)
+    werkzeug = Column(String)
+
+    kavitaeten = Column(Integer)
+
+    revision = Column(String)
