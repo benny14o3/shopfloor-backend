@@ -31,3 +31,17 @@ class Article(Base):
     kavitaeten = Column(Integer)
 
     revision = Column(String)
+
+from sqlalchemy import ForeignKey
+from sqlalchemy.orm import relationship
+
+class Process(Base):
+    __tablename__ = "processes"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    article_id = Column(UUID(as_uuid=True), ForeignKey("articles.id"))
+
+    nummer = Column(Integer)
+    name = Column(String)
+    maschine = Column(String)

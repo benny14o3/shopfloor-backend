@@ -4,6 +4,7 @@ from .database import engine, Base, SessionLocal
 from .models import User
 from .auth import hash_pin, verify_pin
 from .models import User, Article
+from .models import Process
 
 app = FastAPI(title="Formteile Fritsch Shopfloor API")
 
@@ -91,3 +92,34 @@ def create_article(
 def get_articles(db: Session = Depends(get_db)):
     articles = db.query(Article).all()
     return articles
+
+# PROZESS
+@app.post("/processes")
+def create_process(
+    article_id: str,
+    nummer: int,
+    name: str,
+    maschine: str,
+    db: Session = Depends(get_db)
+):
+
+    process = Process(
+        article_id=article_id,
+        nummer=nummer,
+        name=name,
+        maschine=maschine
+    )
+
+    db.add(process)
+    db.commit()
+    db.refresh(process)
+
+    return {"message": "Prozess erstellt"}
+
+@app.get("/processes/{article_id}")
+def get_processes(article_id: str, db: Session = Depends(get_db)):
+
+    processes = db.query(Process).filter(Process.article_id == article_id).all()
+
+    return processes
+
