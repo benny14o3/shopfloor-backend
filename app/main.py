@@ -6,9 +6,12 @@ from .auth import hash_pin, verify_pin
 
 app = FastAPI(title="Formteile Fritsch Shopfloor API")
 
-Base.metadata.create_all(bind=engine)
 
+@app.on_event("startup")
+def startup():
+    Base.metadata.create_all(bind=engine)
 
+    
 # DB Verbindung
 def get_db():
     db = SessionLocal()
