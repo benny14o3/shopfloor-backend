@@ -9,6 +9,7 @@ from .models import Characteristic
 from .models import Measurement
 from datetime import datetime
 from .models import Batch
+from .spc import calculate_spc
 
 app = FastAPI(title="Formteile Fritsch Shopfloor API")
 
@@ -219,7 +220,7 @@ def create_batch(
     db.commit()
     db.refresh(batch)
 
-    return {"message": "Charge gestartet"}
+    return batch
 
 @app.get("/batches/{article_id}")
 def get_batches(article_id: str, db: Session = Depends(get_db)):
@@ -229,3 +230,28 @@ def get_batches(article_id: str, db: Session = Depends(get_db)):
     ).all()
 
     return batches
+
+@app.get("/spc/{characteristic_id}")
+def calculate_spc_for_characteristic(
+    characteristic_id: str,
+    db: Session = Depends(get_db)
+):
+
+    characteristic = db.query(Characteristic).filter(
+        Characteristic.id == characteristic_id
+    ).first()
+
+    measurements = db.query(Measurement).filter(
+        Measurement.characteristic_id == characteristic_id
+    ).all()
+
+    values = [m.value for m in measurements]
+
+    result = calculate_spc(
+        values,
+        float(characteristic.tol_plus),
+        float(characteristic.tol_minus),
+        float(characteristic.sollwert)
+    )
+
+    return result

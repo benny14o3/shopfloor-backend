@@ -69,11 +69,14 @@ class Measurement(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
+    batch_id = Column(UUID(as_uuid=True), ForeignKey("batches.id"))
+
     characteristic_id = Column(UUID(as_uuid=True), ForeignKey("characteristics.id"))
 
     value = Column(String)
 
     timestamp = Column(String)
+    
 
 class Batch(Base):
     __tablename__ = "batches"
