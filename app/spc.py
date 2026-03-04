@@ -17,9 +17,18 @@ def calculate_spc(values, tol_plus, tol_minus, target):
 
     cpk = min(cpu, cpl)
 
+    # Ampelstatus
+    if cpk >= 1.33:
+        status = "GREEN"
+    elif cpk >= 1.0:
+        status = "YELLOW"
+    else:
+        status = "RED"
+
     return {
         "mean": round(mean, 4),
         "std_dev": round(std_dev, 4),
         "cp": round(cp, 3),
-        "cpk": round(cpk, 3)
+        "cpk": round(cpk, 3),
+        "status": status
     }
