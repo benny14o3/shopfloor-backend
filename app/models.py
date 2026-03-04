@@ -63,3 +63,14 @@ class Characteristic(Base):
     messmittel = Column(String)
 
     frequenz = Column(String)
+
+class Measurement(Base):
+    __tablename__ = "measurements"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    characteristic_id = Column(UUID(as_uuid=True), ForeignKey("characteristics.id"))
+
+    value = Column(String)
+
+    timestamp = Column(String)

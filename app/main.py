@@ -6,6 +6,8 @@ from .auth import hash_pin, verify_pin
 from .models import User, Article
 from .models import Process
 from .models import Characteristic
+from .models import Measurement
+from datetime import datetime
 
 app = FastAPI(title="Formteile Fritsch Shopfloor API")
 
@@ -161,4 +163,34 @@ def get_characteristics(process_id: str, db: Session = Depends(get_db)):
     ).all()
 
     return characteristics
+
+
+# MESSWERT
+@app.post("/measurements")
+def create_measurement(
+    characteristic_id: str,
+    value: str,
+    db: Session = Depends(get_db)
+):
+
+    measurement = Measurement(
+        characteristic_id=characteristic_id,
+        value=value,
+        timestamp=str(datetime.utcnow())
+    )
+
+    db.add(measurement)
+    db.commit()
+    db.refresh(measurement)
+
+    return {"message": "Messwert gespeichert"}
+
+@app.get("/measurements/{characteristic_id}")
+def get_measurements(characteristic_id: str, db: Session = Depends(get_db)):
+
+    measurements = db.query(Measurement).filter(
+        Measurement.characteristic_id == characteristic_id
+    ).all()
+
+    return measurements
 
