@@ -8,6 +8,7 @@ from .models import Process
 from .models import Characteristic
 from .models import Measurement
 from datetime import datetime
+from .models import Batch
 
 app = FastAPI(title="Formteile Fritsch Shopfloor API")
 
@@ -194,3 +195,37 @@ def get_measurements(characteristic_id: str, db: Session = Depends(get_db)):
 
     return measurements
 
+
+@app.post("/batches")
+def create_batch(
+    article_id: str,
+    chargennummer: str,
+    maschine: str,
+    operator: str,
+    materialcharge: str,
+    db: Session = Depends(get_db)
+):
+
+    batch = Batch(
+        article_id=article_id,
+        chargennummer=chargennummer,
+        maschine=maschine,
+        operator=operator,
+        materialcharge=materialcharge,
+        start_time=str(datetime.utcnow())
+    )
+
+    db.add(batch)
+    db.commit()
+    db.refresh(batch)
+
+    return {"message": "Charge gestartet"}
+
+@app.get("/batches/{article_id}")
+def get_batches(article_id: str, db: Session = Depends(get_db)):
+
+    batches = db.query(Batch).filter(
+        Batch.article_id == article_id
+    ).all()
+
+    return batches

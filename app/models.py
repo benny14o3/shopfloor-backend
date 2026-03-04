@@ -74,3 +74,20 @@ class Measurement(Base):
     value = Column(String)
 
     timestamp = Column(String)
+
+class Batch(Base):
+    __tablename__ = "batches"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    article_id = Column(UUID(as_uuid=True), ForeignKey("articles.id"))
+
+    chargennummer = Column(String)
+
+    maschine = Column(String)
+
+    operator = Column(String)
+
+    materialcharge = Column(String)
+
+    start_time = Column(String)
