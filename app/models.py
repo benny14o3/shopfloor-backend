@@ -45,3 +45,21 @@ class Process(Base):
     nummer = Column(Integer)
     name = Column(String)
     maschine = Column(String)
+
+class Characteristic(Base):
+    __tablename__ = "characteristics"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    process_id = Column(UUID(as_uuid=True), ForeignKey("processes.id"))
+
+    name = Column(String)
+
+    sollwert = Column(String)
+
+    tol_plus = Column(String)
+    tol_minus = Column(String)
+
+    messmittel = Column(String)
+
+    frequenz = Column(String)

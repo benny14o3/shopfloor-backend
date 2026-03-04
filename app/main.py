@@ -5,6 +5,7 @@ from .models import User
 from .auth import hash_pin, verify_pin
 from .models import User, Article
 from .models import Process
+from .models import Characteristic
 
 app = FastAPI(title="Formteile Fritsch Shopfloor API")
 
@@ -122,4 +123,42 @@ def get_processes(article_id: str, db: Session = Depends(get_db)):
     processes = db.query(Process).filter(Process.article_id == article_id).all()
 
     return processes
+
+# PRÜFMERKMAL
+@app.post("/characteristics")
+def create_characteristic(
+    process_id: str,
+    name: str,
+    sollwert: str,
+    tol_plus: str,
+    tol_minus: str,
+    messmittel: str,
+    frequenz: str,
+    db: Session = Depends(get_db)
+):
+
+    characteristic = Characteristic(
+        process_id=process_id,
+        name=name,
+        sollwert=sollwert,
+        tol_plus=tol_plus,
+        tol_minus=tol_minus,
+        messmittel=messmittel,
+        frequenz=frequenz
+    )
+
+    db.add(characteristic)
+    db.commit()
+    db.refresh(characteristic)
+
+    return {"message": "Prüfmerkmal erstellt"}
+
+@app.get("/characteristics/{process_id}")
+def get_characteristics(process_id: str, db: Session = Depends(get_db)):
+
+    characteristics = db.query(Characteristic).filter(
+        Characteristic.process_id == process_id
+    ).all()
+
+    return characteristics
 
