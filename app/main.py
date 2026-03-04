@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from .database import engine, Base, SessionLocal
 from .models import User
@@ -12,6 +13,14 @@ from .models import Batch
 from .spc import calculate_spc
 
 app = FastAPI(title="Formteile Fritsch Shopfloor API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.on_event("startup")
