@@ -264,3 +264,42 @@ def calculate_spc_for_characteristic(
     )
 
     return result
+
+# MASCHINEN STATUS
+@app.get("/machines")
+def get_machines():
+
+    return [
+        {
+            "machine_id": "MAPLAN GUMMI-01",
+            "status": "running",
+            "article": "82026809",
+            "produced": 320,
+            "target": 500,
+            "cycle_time": 32
+        },
+        {
+            "machine_id": "MAPLAN-GUMMI-02",
+            "status": "stopped",
+            "article": None,
+            "produced": 0,
+            "target": None,
+            "cycle_time": None
+        },
+        {
+            "machine_id": "MAPLAN-SILIKON-03",
+            "status": "setup",
+            "article": None,
+            "produced": 0,
+            "target": None,
+            "cycle_time": None
+	},
+        {
+            "machine_id": "MAPLAN-SILIKON-04",
+            "status": "setup",
+            "article": None,
+            "produced": 0,
+            "target": None,
+            "cycle_time": None
+        }
+    ]
