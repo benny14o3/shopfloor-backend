@@ -286,7 +286,7 @@ def update_machine_status(data: dict, db: Session = Depends(get_db)):
     return {"message": "updated"}
 
 
-@@app.post("/production/start")
+@app.post("/production/start")
 def start_production(data: dict, db: Session = Depends(get_db)):
 
     run = ProductionRun(
