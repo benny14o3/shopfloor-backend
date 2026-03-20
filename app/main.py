@@ -289,7 +289,6 @@ def update_machine_status(data: dict, db: Session = Depends(get_db)):
 @@app.post("/production/start")
 def start_production(data: dict, db: Session = Depends(get_db)):
 
-    # Produktion speichern
     run = ProductionRun(
         machine_id=data["machine_id"],
         article=data["article"]
@@ -297,7 +296,7 @@ def start_production(data: dict, db: Session = Depends(get_db)):
 
     db.add(run)
 
-    # 🔥 WICHTIG: Maschine updaten
+    # Maschine updaten
     machine = db.query(Machine).filter(
         Machine.machine_id == data["machine_id"]
     ).first()
@@ -309,20 +308,7 @@ def start_production(data: dict, db: Session = Depends(get_db)):
 
     return {"message": "started"}
 
-@app.post("/production/stop")
-def stop_production(data: dict, db: Session = Depends(get_db)):
 
-    run = db.query(ProductionRun).filter(
-        ProductionRun.machine_id == data["machine_id"],
-        ProductionRun.end_time == None
-    ).first()
-
-    if run:
-        run.end_time = datetime.utcnow()
-        run.quantity = data.get("quantity", 0)
-        db.commit()
-
-    return {"message": "stopped"}
 @app.post("/production/stop")
 def stop_production(data: dict, db: Session = Depends(get_db)):
 
@@ -335,7 +321,7 @@ def stop_production(data: dict, db: Session = Depends(get_db)):
         run.end_time = datetime.utcnow()
         run.quantity = data.get("quantity", 0)
 
-    # 🔥 Maschine zurücksetzen
+    # Maschine zurücksetzen
     machine = db.query(Machine).filter(
         Machine.machine_id == data["machine_id"]
     ).first()
@@ -346,6 +332,7 @@ def stop_production(data: dict, db: Session = Depends(get_db)):
     db.commit()
 
     return {"message": "stopped"}
+
 
 @app.get("/production/active")
 def get_active_production(db: Session = Depends(get_db)):
