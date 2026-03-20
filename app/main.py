@@ -272,7 +272,7 @@ from fastapi.responses import JSONResponse
 @app.get("/machines")
 def get_machines():
 
-     data = [
+    data = [
         {
             "machine_id": "MAPLAN GUMMI-01",
             "status": "running",
@@ -296,7 +296,7 @@ def get_machines():
             "produced": 0,
             "target": None,
             "cycle_time": None
-	},
+        },
         {
             "machine_id": "MAPLAN-SILIKON-04",
             "status": "setup",
@@ -307,4 +307,4 @@ def get_machines():
         }
     ]
 
-return JSONResponse(content=data)
+    return JSONResponse(content=data)
