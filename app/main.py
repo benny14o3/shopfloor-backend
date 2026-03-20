@@ -286,15 +286,25 @@ def update_machine_status(data: dict, db: Session = Depends(get_db)):
     return {"message": "updated"}
 
 
-@app.post("/production/start")
+@@app.post("/production/start")
 def start_production(data: dict, db: Session = Depends(get_db)):
 
+    # Produktion speichern
     run = ProductionRun(
         machine_id=data["machine_id"],
         article=data["article"]
     )
 
     db.add(run)
+
+    # 🔥 WICHTIG: Maschine updaten
+    machine = db.query(Machine).filter(
+        Machine.machine_id == data["machine_id"]
+    ).first()
+
+    if machine:
+        machine.article = data["article"]
+
     db.commit()
 
     return {"message": "started"}
@@ -311,6 +321,29 @@ def stop_production(data: dict, db: Session = Depends(get_db)):
         run.end_time = datetime.utcnow()
         run.quantity = data.get("quantity", 0)
         db.commit()
+
+    return {"message": "stopped"}
+@app.post("/production/stop")
+def stop_production(data: dict, db: Session = Depends(get_db)):
+
+    run = db.query(ProductionRun).filter(
+        ProductionRun.machine_id == data["machine_id"],
+        ProductionRun.end_time == None
+    ).first()
+
+    if run:
+        run.end_time = datetime.utcnow()
+        run.quantity = data.get("quantity", 0)
+
+    # 🔥 Maschine zurücksetzen
+    machine = db.query(Machine).filter(
+        Machine.machine_id == data["machine_id"]
+    ).first()
+
+    if machine:
+        machine.article = None
+
+    db.commit()
 
     return {"message": "stopped"}
 
