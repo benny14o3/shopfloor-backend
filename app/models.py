@@ -94,3 +94,16 @@ class Batch(Base):
     materialcharge = Column(String)
 
     start_time = Column(String)
+
+from sqlalchemy import Column, Integer, String
+
+class Machine(Base):
+    __tablename__ = "machines"
+
+    id = Column(Integer, primary_key=True, index=True)
+    machine_id = Column(String, unique=True, index=True)
+    status = Column(String)
+    article = Column(String, nullable=True)
+    produced = Column(Integer, default=0)
+    target = Column(Integer, nullable=True)
+    cycle_time = Column(Integer, nullable=True)

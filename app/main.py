@@ -1,19 +1,16 @@
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from .database import engine, Base, SessionLocal
-from .models import User
-from .auth import hash_pin, verify_pin
-from .models import User, Article
-from .models import Process
-from .models import Characteristic
-from .models import Measurement
 from datetime import datetime
-from .models import Batch
+
+from .database import engine, Base, SessionLocal
+from .models import User, Article, Process, Characteristic, Measurement, Batch, Machine
+from .auth import hash_pin, verify_pin
 from .spc import calculate_spc
 
 app = FastAPI(title="Formteile Fritsch Shopfloor API")
 
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,13 +19,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
+# STARTUP
 @app.on_event("startup")
 def startup():
     Base.metadata.create_all(bind=engine)
 
-    
-# DB Verbindung
+    db = SessionLocal()
+
+    # Maschinen initial anlegen
+    if db.query(Machine).count() == 0:
+        machines = [
+            Machine(machine_id="MAPLAN GUMMI-01", status="running"),
+            Machine(machine_id="MAPLAN-GUMMI-02", status="stopped"),
+            Machine(machine_id="MAPLAN-SILIKON-03", status="setup"),
+            Machine(machine_id="MAPLAN-SILIKON-04", status="setup"),
+        ]
+        db.add_all(machines)
+        db.commit()
+
+    db.close()
+
+
+# DB Session
 def get_db():
     db = SessionLocal()
     try:
@@ -42,7 +54,7 @@ def root():
     return {"message": "Shopfloor API läuft"}
 
 
-# USER ERSTELLEN
+# USER
 @app.post("/users")
 def create_user(name: str, role: str, pin: str, db: Session = Depends(get_db)):
     user = User(
@@ -50,18 +62,14 @@ def create_user(name: str, role: str, pin: str, db: Session = Depends(get_db)):
         role=role,
         pin_hash=hash_pin(pin)
     )
-
     db.add(user)
     db.commit()
     db.refresh(user)
-
     return {"message": "User erstellt", "user": name}
 
 
-# LOGIN
 @app.post("/login")
 def login(pin: str, db: Session = Depends(get_db)):
-
     users = db.query(User).all()
 
     for user in users:
@@ -74,7 +82,8 @@ def login(pin: str, db: Session = Depends(get_db)):
 
     return {"message": "PIN falsch"}
 
-# ARTIKEL ERSTELLEN
+
+# ARTIKEL
 @app.post("/articles")
 def create_article(
     artikelnummer: str,
@@ -85,7 +94,6 @@ def create_article(
     revision: str,
     db: Session = Depends(get_db)
 ):
-
     article = Article(
         artikelnummer=artikelnummer,
         bezeichnung=bezeichnung,
@@ -94,20 +102,18 @@ def create_article(
         kavitaeten=kavitaeten,
         revision=revision
     )
-
     db.add(article)
     db.commit()
     db.refresh(article)
-
     return {"message": "Artikel erstellt", "artikelnummer": artikelnummer}
 
-# ALLE ARTIKEL
+
 @app.get("/articles")
 def get_articles(db: Session = Depends(get_db)):
-    articles = db.query(Article).all()
-    return articles
+    return db.query(Article).all()
 
-# PROZESS
+
+# PROZESSE
 @app.post("/processes")
 def create_process(
     article_id: str,
@@ -116,28 +122,24 @@ def create_process(
     maschine: str,
     db: Session = Depends(get_db)
 ):
-
     process = Process(
         article_id=article_id,
         nummer=nummer,
         name=name,
         maschine=maschine
     )
-
     db.add(process)
     db.commit()
     db.refresh(process)
-
     return {"message": "Prozess erstellt"}
+
 
 @app.get("/processes/{article_id}")
 def get_processes(article_id: str, db: Session = Depends(get_db)):
+    return db.query(Process).filter(Process.article_id == article_id).all()
 
-    processes = db.query(Process).filter(Process.article_id == article_id).all()
 
-    return processes
-
-# PRÜFMERKMAL
+# PRÜFMERKMALE
 @app.post("/characteristics")
 def create_characteristic(
     process_id: str,
@@ -149,7 +151,6 @@ def create_characteristic(
     frequenz: str,
     db: Session = Depends(get_db)
 ):
-
     characteristic = Characteristic(
         process_id=process_id,
         name=name,
@@ -159,53 +160,45 @@ def create_characteristic(
         messmittel=messmittel,
         frequenz=frequenz
     )
-
     db.add(characteristic)
     db.commit()
     db.refresh(characteristic)
-
     return {"message": "Prüfmerkmal erstellt"}
+
 
 @app.get("/characteristics/{process_id}")
 def get_characteristics(process_id: str, db: Session = Depends(get_db)):
-
-    characteristics = db.query(Characteristic).filter(
+    return db.query(Characteristic).filter(
         Characteristic.process_id == process_id
     ).all()
 
-    return characteristics
 
-
-# MESSWERT
+# MESSWERTE
 @app.post("/measurements")
 def create_measurement(
     characteristic_id: str,
     value: str,
     db: Session = Depends(get_db)
 ):
-
     measurement = Measurement(
         characteristic_id=characteristic_id,
         value=value,
         timestamp=str(datetime.utcnow())
     )
-
     db.add(measurement)
     db.commit()
     db.refresh(measurement)
-
     return {"message": "Messwert gespeichert"}
+
 
 @app.get("/measurements/{characteristic_id}")
 def get_measurements(characteristic_id: str, db: Session = Depends(get_db)):
-
-    measurements = db.query(Measurement).filter(
+    return db.query(Measurement).filter(
         Measurement.characteristic_id == characteristic_id
     ).all()
 
-    return measurements
 
-
+# BATCHES
 @app.post("/batches")
 def create_batch(
     article_id: str,
@@ -215,7 +208,6 @@ def create_batch(
     materialcharge: str,
     db: Session = Depends(get_db)
 ):
-
     batch = Batch(
         article_id=article_id,
         chargennummer=chargennummer,
@@ -224,28 +216,25 @@ def create_batch(
         materialcharge=materialcharge,
         start_time=str(datetime.utcnow())
     )
-
     db.add(batch)
     db.commit()
     db.refresh(batch)
-
     return batch
+
 
 @app.get("/batches/{article_id}")
 def get_batches(article_id: str, db: Session = Depends(get_db)):
-
-    batches = db.query(Batch).filter(
+    return db.query(Batch).filter(
         Batch.article_id == article_id
     ).all()
 
-    return batches
 
+# SPC
 @app.get("/spc/{characteristic_id}")
 def calculate_spc_for_characteristic(
     characteristic_id: str,
     db: Session = Depends(get_db)
 ):
-
     characteristic = db.query(Characteristic).filter(
         Characteristic.id == characteristic_id
     ).first()
@@ -254,57 +243,43 @@ def calculate_spc_for_characteristic(
         Measurement.characteristic_id == characteristic_id
     ).all()
 
-    values = [m.value for m in measurements]
+    values = [float(m.value) for m in measurements]
 
-    result = calculate_spc(
+    return calculate_spc(
         values,
         float(characteristic.tol_plus),
         float(characteristic.tol_minus),
         float(characteristic.sollwert)
     )
 
-    return result
 
-# MASCHINEN STATUS
-
-from fastapi.responses import JSONResponse
-
+# MASCHINEN (DB!)
 @app.get("/machines")
-def get_machines():
+def get_machines(db: Session = Depends(get_db)):
+    machines = db.query(Machine).all()
 
-    data = [
+    return [
         {
-            "machine_id": "MAPLAN GUMMI-01",
-            "status": "running",
-            "article": "82026809",
-            "produced": 320,
-            "target": 500,
-            "cycle_time": 32
-        },
-        {
-            "machine_id": "MAPLAN-GUMMI-02",
-            "status": "stopped",
-            "article": None,
-            "produced": 0,
-            "target": None,
-            "cycle_time": None
-        },
-        {
-            "machine_id": "MAPLAN-SILIKON-03",
-            "status": "setup",
-            "article": None,
-            "produced": 0,
-            "target": None,
-            "cycle_time": None
-        },
-        {
-            "machine_id": "MAPLAN-SILIKON-04",
-            "status": "setup",
-            "article": None,
-            "produced": 0,
-            "target": None,
-            "cycle_time": None
+            "machine_id": m.machine_id,
+            "status": m.status,
+            "article": m.article,
+            "produced": m.produced,
+            "target": m.target,
+            "cycle_time": m.cycle_time
         }
+        for m in machines
     ]
 
-    return JSONResponse(content=data)
+
+@app.post("/machines/status")
+def update_machine_status(data: dict, db: Session = Depends(get_db)):
+
+    machine = db.query(Machine).filter(
+        Machine.machine_id == data["machine_id"]
+    ).first()
+
+    if machine:
+        machine.status = data["status"]
+        db.commit()
+
+    return {"message": "updated"}
