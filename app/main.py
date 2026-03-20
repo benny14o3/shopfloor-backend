@@ -266,10 +266,13 @@ def calculate_spc_for_characteristic(
     return result
 
 # MASCHINEN STATUS
+
+from fastapi.responses import JSONResponse
+
 @app.get("/machines")
 def get_machines():
 
-    return [
+     data = [
         {
             "machine_id": "MAPLAN GUMMI-01",
             "status": "running",
@@ -303,3 +306,5 @@ def get_machines():
             "cycle_time": None
         }
     ]
+
+return JSONResponse(content=data)
