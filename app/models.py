@@ -107,3 +107,16 @@ class Machine(Base):
     produced = Column(Integer, default=0)
     target = Column(Integer, nullable=True)
     cycle_time = Column(Integer, nullable=True)
+
+from sqlalchemy import Column, Integer, String, DateTime
+from datetime import datetime
+
+class ProductionRun(Base):
+    __tablename__ = "production_runs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    machine_id = Column(String)
+    article = Column(String)
+    start_time = Column(DateTime, default=datetime.utcnow)
+    end_time = Column(DateTime, nullable=True)
+    quantity = Column(Integer, default=0)

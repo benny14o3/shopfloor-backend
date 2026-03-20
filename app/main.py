@@ -7,6 +7,7 @@ from .database import engine, Base, SessionLocal
 from .models import User, Article, Process, Characteristic, Measurement, Batch, Machine
 from .auth import hash_pin, verify_pin
 from .spc import calculate_spc
+from .models import ProductionRun
 
 app = FastAPI(title="Formteile Fritsch Shopfloor API")
 
@@ -283,3 +284,49 @@ def update_machine_status(data: dict, db: Session = Depends(get_db)):
         db.commit()
 
     return {"message": "updated"}
+
+
+@app.post("/production/start")
+def start_production(data: dict, db: Session = Depends(get_db)):
+
+    run = ProductionRun(
+        machine_id=data["machine_id"],
+        article=data["article"]
+    )
+
+    db.add(run)
+    db.commit()
+
+    return {"message": "started"}
+
+@app.post("/production/stop")
+def stop_production(data: dict, db: Session = Depends(get_db)):
+
+    run = db.query(ProductionRun).filter(
+        ProductionRun.machine_id == data["machine_id"],
+        ProductionRun.end_time == None
+    ).first()
+
+    if run:
+        run.end_time = datetime.utcnow()
+        run.quantity = data.get("quantity", 0)
+        db.commit()
+
+    return {"message": "stopped"}
+
+@app.get("/production/active")
+def get_active_production(db: Session = Depends(get_db)):
+
+    runs = db.query(ProductionRun).filter(
+        ProductionRun.end_time == None
+    ).all()
+
+    return [
+        {
+            "machine_id": r.machine_id,
+            "article": r.article,
+            "start": r.start_time,
+            "quantity": r.quantity
+        }
+        for r in runs
+    ]
