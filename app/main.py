@@ -296,18 +296,18 @@ def start_production(data: dict, db: Session = Depends(get_db)):
 
     db.add(run)
 
-    # Maschine updaten
     machine = db.query(Machine).filter(
         Machine.machine_id == data["machine_id"]
     ).first()
 
     if machine:
         machine.article = data["article"]
+        machine.fa = data.get("fa")
+        machine.fa_target = data.get("fa_target")
 
     db.commit()
 
     return {"message": "started"}
-
 
 @app.post("/production/stop")
 def stop_production(data: dict, db: Session = Depends(get_db)):

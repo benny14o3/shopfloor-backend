@@ -120,3 +120,6 @@ class ProductionRun(Base):
     start_time = Column(DateTime, default=datetime.utcnow)
     end_time = Column(DateTime, nullable=True)
     quantity = Column(Integer, default=0)
+
+fa = Column(String, nullable=True)
+fa_target = Column(Integer, nullable=True)
