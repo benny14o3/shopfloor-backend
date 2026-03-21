@@ -350,3 +350,14 @@ def get_active_production(db: Session = Depends(get_db)):
         }
         for r in runs
     ]
+
+@app.get("/reset-db")
+def reset_db(db: Session = Depends(get_db)):
+
+    db.execute("DROP TABLE IF EXISTS machines CASCADE;")
+    db.execute("DROP TABLE IF EXISTS production_runs CASCADE;")
+    db.commit()
+
+    Base.metadata.create_all(bind=engine)
+
+    return {"message": "DB reset done"}
