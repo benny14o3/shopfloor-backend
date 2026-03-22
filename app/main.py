@@ -361,3 +361,112 @@ def reset_db(db: Session = Depends(get_db)):
     Base.metadata.create_all(bind=engine)
 
     return {"message": "DB reset done"}
+
+# ─── FEHLERSAMMELKARTE ──────────────────────────────────────────────────────
+
+from .models import DefectEntry
+
+@app.post("/defects")
+def create_defect(data: dict, db: Session = Depends(get_db)):
+    entry = DefectEntry(
+        article_id=data.get("article_id"),
+        artikelnummer=data.get("artikelnummer"),
+        auftrag_nr=data.get("auftrag_nr"),
+        chargen_nr=data.get("chargen_nr"),
+        maschine=data.get("maschine"),
+        operator=data.get("operator"),
+        schicht=data.get("schicht"),
+        datum=data.get("datum"),
+        geprueft=int(data.get("geprueft", 0)),
+        nacharbeit=int(data.get("nacharbeit", 0)),
+        anfahrausschuss=int(data.get("anfahrausschuss", 0)),
+        luft_fliess=int(data.get("luft_fliess", 0)),
+        wkzg_verschmutzung=int(data.get("wkzg_verschmutzung", 0)),
+        blasen=int(data.get("blasen", 0)),
+        material_fehlt=int(data.get("material_fehlt", 0)),
+        zusatzteil_feder=int(data.get("zusatzteil_feder", 0)),
+        dichtkantenfehler=int(data.get("dichtkantenfehler", 0)),
+        stechfehler=int(data.get("stechfehler", 0)),
+        doppelschnitt=int(data.get("doppelschnitt", 0)),
+        fremdkoerper_stippen=int(data.get("fremdkoerper_stippen", 0)),
+        werkzeugfehler=int(data.get("werkzeugfehler", 0)),
+        abfall=int(data.get("abfall", 0)),
+        platzer=int(data.get("platzer", 0)),
+        blech_nio=int(data.get("blech_nio", 0)),
+        rohling=int(data.get("rohling", 0)),
+        sonstige=int(data.get("sonstige", 0)),
+        notiz=data.get("notiz"),
+        fehlerorte=data.get("fehlerorte"),        # JSON string
+        typ=data.get("typ"),
+        material=data.get("material"),
+        bindung=data.get("bindung"),
+        freigabe=data.get("freigabe"),
+        federkontrolle=data.get("federkontrolle"),
+        bindungspruefung=data.get("bindungspruefung"),
+    )
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return {"message": "Gespeichert", "id": entry.id}
+
+
+@app.get("/defects")
+def get_defects(artikelnummer: str = None, db: Session = Depends(get_db)):
+    q = db.query(DefectEntry)
+    if artikelnummer:
+        q = q.filter(DefectEntry.artikelnummer == artikelnummer)
+    entries = q.order_by(DefectEntry.created_at.desc()).all()
+    return [
+        {
+            "id": e.id,
+            "artikelnummer": e.artikelnummer,
+            "auftrag_nr": e.auftrag_nr,
+            "chargen_nr": e.chargen_nr,
+            "maschine": e.maschine,
+            "operator": e.operator,
+            "schicht": e.schicht,
+            "datum": e.datum,
+            "geprueft": e.geprueft,
+            "nacharbeit": e.nacharbeit,
+            "anfahrausschuss": e.anfahrausschuss,
+            "nio_gesamt": (
+                e.luft_fliess + e.wkzg_verschmutzung + e.blasen + e.material_fehlt +
+                e.zusatzteil_feder + e.dichtkantenfehler + e.stechfehler + e.doppelschnitt +
+                e.fremdkoerper_stippen + e.werkzeugfehler + e.abfall + e.platzer +
+                e.blech_nio + e.rohling + e.sonstige
+            ),
+            "anteil_nio": round(
+                (e.luft_fliess + e.wkzg_verschmutzung + e.blasen + e.material_fehlt +
+                 e.zusatzteil_feder + e.dichtkantenfehler + e.stechfehler + e.doppelschnitt +
+                 e.fremdkoerper_stippen + e.werkzeugfehler + e.abfall + e.platzer +
+                 e.blech_nio + e.rohling + e.sonstige) / e.geprueft * 100, 2
+            ) if e.geprueft else 0,
+            "fehler": {
+                "Luft-/Fließfehler": e.luft_fliess,
+                "Wkzg.-Verschmutzung": e.wkzg_verschmutzung,
+                "Blasen": e.blasen,
+                "Material fehlt": e.material_fehlt,
+                "Zusatzteil/Feder": e.zusatzteil_feder,
+                "Dichtkantenfehler": e.dichtkantenfehler,
+                "Stechfehler": e.stechfehler,
+                "Doppelschnitt": e.doppelschnitt,
+                "Fremdkörper/Stippen": e.fremdkoerper_stippen,
+                "Werkzeugfehler": e.werkzeugfehler,
+                "Abfall": e.abfall,
+                "Platzer": e.platzer,
+                "Blech n.i.O.": e.blech_nio,
+                "Rohling": e.rohling,
+                "Sonstige": e.sonstige,
+            },
+            "notiz": e.notiz,
+            "fehlerorte": e.fehlerorte,
+            "typ": e.typ,
+            "material": e.material,
+            "bindung": e.bindung,
+            "freigabe": e.freigabe,
+            "federkontrolle": e.federkontrolle,
+            "bindungspruefung": e.bindungspruefung,
+            "created_at": str(e.created_at),
+        }
+        for e in entries
+    ]

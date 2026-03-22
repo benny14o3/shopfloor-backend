@@ -98,3 +98,47 @@ class ProductionRun(Base):
     start_time = Column(DateTime, default=datetime.utcnow)
     end_time = Column(DateTime, nullable=True)
     quantity = Column(Integer, default=0)
+
+
+class DefectEntry(Base):
+    __tablename__ = "defect_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    article_id = Column(String, nullable=True)
+    artikelnummer = Column(String, nullable=True)
+    auftrag_nr = Column(String, nullable=True)
+    chargen_nr = Column(String, nullable=True)
+    maschine = Column(String, nullable=True)
+    operator = Column(String, nullable=True)
+    schicht = Column(String, nullable=True)       # Früh / Spät / Nacht
+    datum = Column(String, nullable=True)
+    geprueft = Column(Integer, default=0)         # Geprüfte Teile
+    nacharbeit = Column(Integer, default=0)
+    anfahrausschuss = Column(Integer, default=0)
+    # Fehlerarten als einzelne Zähler
+    luft_fliess = Column(Integer, default=0)
+    wkzg_verschmutzung = Column(Integer, default=0)
+    blasen = Column(Integer, default=0)
+    material_fehlt = Column(Integer, default=0)
+    zusatzteil_feder = Column(Integer, default=0)
+    dichtkantenfehler = Column(Integer, default=0)
+    stechfehler = Column(Integer, default=0)
+    doppelschnitt = Column(Integer, default=0)
+    fremdkoerper_stippen = Column(Integer, default=0)
+    werkzeugfehler = Column(Integer, default=0)
+    abfall = Column(Integer, default=0)
+    platzer = Column(Integer, default=0)
+    blech_nio = Column(Integer, default=0)
+    rohling = Column(Integer, default=0)
+    sonstige = Column(Integer, default=0)
+    notiz = Column(String, nullable=True)
+    # Fehlerorte je Fehlerart (JSON-String)
+    fehlerorte = Column(String, nullable=True)
+    # Zusatzfelder
+    typ = Column(String, nullable=True)
+    material = Column(String, nullable=True)
+    bindung = Column(String, nullable=True)
+    freigabe = Column(String, nullable=True)
+    federkontrolle = Column(String, nullable=True)   # "io" / "nio" / None
+    bindungspruefung = Column(String, nullable=True) # "io" / "nio" / None
+    created_at = Column(DateTime, default=datetime.utcnow)
