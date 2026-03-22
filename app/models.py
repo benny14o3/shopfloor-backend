@@ -87,6 +87,7 @@ class Machine(Base):
     cycle_time = Column(Integer, nullable=True)
     fa = Column(String, nullable=True)          # Fertigungsauftrag-Nummer
     fa_target = Column(Integer, nullable=True)   # Soll-Menge FA
+    charge = Column(String, nullable=True)        # Aktuelle Chargen-Nr.
 
 
 class ProductionRun(Base):

@@ -266,7 +266,10 @@ def get_machines(db: Session = Depends(get_db)):
             "article": m.article,
             "produced": m.produced,
             "target": m.target,
-            "cycle_time": m.cycle_time
+            "cycle_time": m.cycle_time,
+            "fa": m.fa,
+            "fa_target": m.fa_target,
+            "charge": m.charge
         }
         for m in machines
     ]
@@ -280,7 +283,10 @@ def update_machine_status(data: dict, db: Session = Depends(get_db)):
     ).first()
 
     if machine:
-        machine.status = data["status"]
+        if "status" in data:
+            machine.status = data["status"]
+        if "charge" in data:
+            machine.charge = data["charge"]
         db.commit()
 
     return {"message": "updated"}
