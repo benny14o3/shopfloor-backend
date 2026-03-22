@@ -143,3 +143,38 @@ class DefectEntry(Base):
     federkontrolle = Column(String, nullable=True)   # "io" / "nio" / None
     bindungspruefung = Column(String, nullable=True) # "io" / "nio" / None
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class InspectionPlan(Base):
+    """Prüfplan: definiert Prüfaufgaben pro Artikel mit Frequenz"""
+    __tablename__ = "inspection_plans"
+
+    id = Column(Integer, primary_key=True, index=True)
+    artikelnummer = Column(String, nullable=False, index=True)
+    bezeichnung = Column(String, nullable=True)       # Prüfaufgabe
+    pruefmerkmal = Column(String, nullable=True)      # Was wird geprüft
+    messmittel = Column(String, nullable=True)
+    frequenz_typ = Column(String, nullable=False)     # "zeit" / "schicht" / "stueckzahl"
+    frequenz_wert = Column(Integer, nullable=False)   # z.B. 60 (min) / 1 (schicht) / 500 (stück)
+    toleranz_plus = Column(String, nullable=True)
+    toleranz_minus = Column(String, nullable=True)
+    sollwert = Column(String, nullable=True)
+    aktiv = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class InspectionLog(Base):
+    """Prüfprotokoll: jede durchgeführte oder überfällige Prüfung"""
+    __tablename__ = "inspection_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    plan_id = Column(Integer, ForeignKey("inspection_plans.id"))
+    artikelnummer = Column(String, nullable=True)
+    maschine = Column(String, nullable=True)
+    operator = Column(String, nullable=True)
+    status = Column(String, nullable=False)           # "faellig" / "durchgefuehrt" / "quittiert"
+    messwert = Column(String, nullable=True)
+    bemerkung = Column(String, nullable=True)
+    faellig_um = Column(DateTime, nullable=True)
+    durchgefuehrt_um = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

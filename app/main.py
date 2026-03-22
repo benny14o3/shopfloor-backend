@@ -489,3 +489,115 @@ def get_defects(artikelnummer: str = None, db: Session = Depends(get_db)):
         }
         for e in entries
     ]
+
+# ─── PRÜFPLAN ────────────────────────────────────────────────────────────────
+
+from .models import InspectionPlan, InspectionLog
+
+@app.post("/inspection-plans")
+def create_inspection_plan(data: dict, db: Session = Depends(get_db)):
+    plan = InspectionPlan(
+        artikelnummer=data["artikelnummer"],
+        bezeichnung=data.get("bezeichnung"),
+        pruefmerkmal=data.get("pruefmerkmal"),
+        messmittel=data.get("messmittel"),
+        frequenz_typ=data["frequenz_typ"],
+        frequenz_wert=int(data["frequenz_wert"]),
+        toleranz_plus=data.get("toleranz_plus"),
+        toleranz_minus=data.get("toleranz_minus"),
+        sollwert=data.get("sollwert"),
+        aktiv=data.get("aktiv", True),
+    )
+    db.add(plan)
+    db.commit()
+    db.refresh(plan)
+    return {"message": "Prüfplan angelegt", "id": plan.id}
+
+
+@app.get("/inspection-plans")
+def get_inspection_plans(artikelnummer: str = None, db: Session = Depends(get_db)):
+    q = db.query(InspectionPlan).filter(InspectionPlan.aktiv == True)
+    if artikelnummer:
+        q = q.filter(InspectionPlan.artikelnummer == artikelnummer)
+    plans = q.order_by(InspectionPlan.artikelnummer, InspectionPlan.id).all()
+    return [
+        {
+            "id": p.id,
+            "artikelnummer": p.artikelnummer,
+            "bezeichnung": p.bezeichnung,
+            "pruefmerkmal": p.pruefmerkmal,
+            "messmittel": p.messmittel,
+            "frequenz_typ": p.frequenz_typ,
+            "frequenz_wert": p.frequenz_wert,
+            "toleranz_plus": p.toleranz_plus,
+            "toleranz_minus": p.toleranz_minus,
+            "sollwert": p.sollwert,
+            "aktiv": p.aktiv,
+        }
+        for p in plans
+    ]
+
+
+@app.put("/inspection-plans/{plan_id}")
+def update_inspection_plan(plan_id: int, data: dict, db: Session = Depends(get_db)):
+    plan = db.query(InspectionPlan).filter(InspectionPlan.id == plan_id).first()
+    if not plan:
+        return {"error": "nicht gefunden"}
+    for key, val in data.items():
+        if hasattr(plan, key):
+            setattr(plan, key, val)
+    db.commit()
+    return {"message": "aktualisiert"}
+
+
+@app.delete("/inspection-plans/{plan_id}")
+def delete_inspection_plan(plan_id: int, db: Session = Depends(get_db)):
+    plan = db.query(InspectionPlan).filter(InspectionPlan.id == plan_id).first()
+    if plan:
+        plan.aktiv = False
+        db.commit()
+    return {"message": "deaktiviert"}
+
+
+@app.post("/inspection-logs")
+def create_inspection_log(data: dict, db: Session = Depends(get_db)):
+    from datetime import datetime as dt
+    log = InspectionLog(
+        plan_id=data.get("plan_id"),
+        artikelnummer=data.get("artikelnummer"),
+        maschine=data.get("maschine"),
+        operator=data.get("operator"),
+        status=data.get("status", "durchgefuehrt"),
+        messwert=data.get("messwert"),
+        bemerkung=data.get("bemerkung"),
+        faellig_um=dt.fromisoformat(data["faellig_um"]) if data.get("faellig_um") else None,
+        durchgefuehrt_um=dt.utcnow(),
+    )
+    db.add(log)
+    db.commit()
+    db.refresh(log)
+    return {"message": "Protokolleintrag gespeichert", "id": log.id}
+
+
+@app.get("/inspection-logs")
+def get_inspection_logs(artikelnummer: str = None, limit: int = 50, db: Session = Depends(get_db)):
+    q = db.query(InspectionLog)
+    if artikelnummer:
+        q = q.filter(InspectionLog.artikelnummer == artikelnummer)
+    logs = q.order_by(InspectionLog.created_at.desc()).limit(limit).all()
+    return [
+        {
+            "id": l.id,
+            "plan_id": l.plan_id,
+            "artikelnummer": l.artikelnummer,
+            "maschine": l.maschine,
+            "operator": l.operator,
+            "status": l.status,
+            "messwert": l.messwert,
+            "bemerkung": l.bemerkung,
+            "faellig_um": str(l.faellig_um) if l.faellig_um else None,
+            "durchgefuehrt_um": str(l.durchgefuehrt_um) if l.durchgefuehrt_um else None,
+            "created_at": str(l.created_at),
+        }
+        for l in logs
+    ]
