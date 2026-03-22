@@ -358,15 +358,28 @@ def get_active_production(db: Session = Depends(get_db)):
     ]
 
 @app.get("/reset-db")
-def reset_db(db: Session = Depends(get_db)):
-
-    db.execute("DROP TABLE IF EXISTS machines CASCADE;")
-    db.execute("DROP TABLE IF EXISTS production_runs CASCADE;")
-    db.commit()
+def reset_db():
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS machines CASCADE;"))
+        conn.execute(text("DROP TABLE IF EXISTS production_runs CASCADE;"))
+        conn.commit()
 
     Base.metadata.create_all(bind=engine)
 
-    return {"message": "DB reset done"}
+    # Maschinen neu anlegen
+    db = SessionLocal()
+    machines = [
+        Machine(machine_id="MAPLAN GUMMI-01",  status="stopped"),
+        Machine(machine_id="MAPLAN-GUMMI-02",  status="stopped"),
+        Machine(machine_id="MAPLAN-SILIKON-03", status="stopped"),
+        Machine(machine_id="MAPLAN-SILIKON-04", status="stopped"),
+    ]
+    db.add_all(machines)
+    db.commit()
+    db.close()
+
+    return {"message": "DB reset done - Maschinen neu angelegt"}
 
 # ─── FEHLERSAMMELKARTE ──────────────────────────────────────────────────────
 
