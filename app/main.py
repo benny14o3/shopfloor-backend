@@ -601,3 +601,33 @@ def get_inspection_logs(artikelnummer: str = None, limit: int = 50, db: Session 
         }
         for l in logs
     ]
+
+# ─── ADMIN: DATENBANK BEREINIGEN ─────────────────────────────────────────────
+
+@app.delete("/admin/clear-all")
+def clear_all_data(db: Session = Depends(get_db)):
+    """Löscht alle Produktionsdaten — Artikel, Messungen, Chargen, Defekte, Prüfpläne"""
+    from sqlalchemy import text
+
+    # Reihenfolge wichtig wegen Foreign Keys
+    tables = [
+        "inspection_logs",
+        "inspection_plans",
+        "defect_entries",
+        "measurements",
+        "characteristics",
+        "processes",
+        "batches",
+        "articles",
+    ]
+
+    deleted = {}
+    for table in tables:
+        try:
+            result = db.execute(text(f"DELETE FROM {table}"))
+            deleted[table] = result.rowcount
+        except Exception as e:
+            deleted[table] = f"Fehler: {str(e)}"
+
+    db.commit()
+    return {"message": "Bereinigung abgeschlossen", "deleted": deleted}
