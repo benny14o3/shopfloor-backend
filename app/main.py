@@ -287,6 +287,12 @@ def update_machine_status(data: dict, db: Session = Depends(get_db)):
             machine.status = data["status"]
         if "charge" in data:
             machine.charge = data["charge"]
+        if "article" in data:
+            machine.article = data["article"]
+        if "fa" in data:
+            machine.fa = data["fa"]
+        if "fa_target" in data:
+            machine.fa_target = data["fa_target"]
         db.commit()
 
     return {"message": "updated"}
