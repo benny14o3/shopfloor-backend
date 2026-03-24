@@ -334,6 +334,10 @@ def stop_production(data: dict, db: Session = Depends(get_db)):
 
     if machine:
         machine.article = None
+        machine.fa = None
+        machine.fa_target = None
+        machine.charge = None
+        machine.produced = 0
 
     db.commit()
 
