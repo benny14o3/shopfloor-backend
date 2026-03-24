@@ -152,10 +152,11 @@ class InspectionPlan(Base):
     id = Column(Integer, primary_key=True, index=True)
     artikelnummer = Column(String, nullable=False, index=True)
     bezeichnung = Column(String, nullable=True)       # Prüfaufgabe
-    pruefmerkmal = Column(String, nullable=True)      # Was wird geprüft
+    pruefmerkmal = Column(String, nullable=True)      # Was wird geprüft (Freitext)
+    characteristic_id = Column(String, nullable=True) # Verknüpfung mit SPC-Merkmal (UUID)
     messmittel = Column(String, nullable=True)
     frequenz_typ = Column(String, nullable=False)     # "zeit" / "schicht" / "stueckzahl"
-    frequenz_wert = Column(Integer, nullable=False)   # z.B. 60 (min) / 1 (schicht) / 500 (stück)
+    frequenz_wert = Column(Integer, nullable=False)
     toleranz_plus = Column(String, nullable=True)
     toleranz_minus = Column(String, nullable=True)
     sollwert = Column(String, nullable=True)

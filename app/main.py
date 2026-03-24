@@ -510,6 +510,7 @@ def create_inspection_plan(data: dict, db: Session = Depends(get_db)):
         artikelnummer=data["artikelnummer"],
         bezeichnung=data.get("bezeichnung"),
         pruefmerkmal=data.get("pruefmerkmal"),
+        characteristic_id=data.get("characteristic_id"),
         messmittel=data.get("messmittel"),
         frequenz_typ=data["frequenz_typ"],
         frequenz_wert=int(data["frequenz_wert"]),
@@ -542,6 +543,7 @@ def get_inspection_plans(artikelnummer: str = None, db: Session = Depends(get_db
             "toleranz_plus": p.toleranz_plus,
             "toleranz_minus": p.toleranz_minus,
             "sollwert": p.sollwert,
+            "characteristic_id": p.characteristic_id,
             "aktiv": p.aktiv,
         }
         for p in plans
@@ -584,6 +586,18 @@ def create_inspection_log(data: dict, db: Session = Depends(get_db)):
         durchgefuehrt_um=dt.utcnow(),
     )
     db.add(log)
+
+    # Messwert automatisch in SPC speichern wenn characteristic_id vorhanden
+    messwert = data.get("messwert")
+    characteristic_id = data.get("characteristic_id")
+    if messwert and characteristic_id and data.get("status") == "durchgefuehrt":
+        measurement = Measurement(
+            characteristic_id=characteristic_id,
+            value=str(messwert),
+            timestamp=str(dt.utcnow()),
+        )
+        db.add(measurement)
+
     db.commit()
     db.refresh(log)
     return {"message": "Protokolleintrag gespeichert", "id": log.id}
