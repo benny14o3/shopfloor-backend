@@ -73,6 +73,9 @@ class Measurement(Base):
     characteristic_id = Column(UUID(as_uuid=True), ForeignKey("characteristics.id"))
     value = Column(String)
     timestamp = Column(String)
+    charge_nr = Column(String, nullable=True)
+    maschine = Column(String, nullable=True)
+    operator = Column(String, nullable=True)
 
 
 class Machine(Base):
@@ -178,4 +181,36 @@ class InspectionLog(Base):
     bemerkung = Column(String, nullable=True)
     faellig_um = Column(DateTime, nullable=True)
     durchgefuehrt_um = Column(DateTime, nullable=True)
+    charge_nr = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ArticleDocument(Base):
+    """Artikelmappe: Dokumente pro Artikel"""
+    __tablename__ = "article_documents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    artikelnummer = Column(String, nullable=False, index=True)
+    doc_typ = Column(String, nullable=False)   # zeichnung / pap / einstellbericht / pruefplan / qpa / reklamation / fehlermerkmalkatalog
+    bezeichnung = Column(String, nullable=True)
+    revision = Column(String, nullable=True)
+    dateiname = Column(String, nullable=True)
+    dateipfad = Column(String, nullable=True)  # /mnt/data/docs/...
+    notiz = Column(String, nullable=True)
+    erstellt_von = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ShopfloorUser(Base):
+    """Shopfloor Benutzer mit Rolle und Passwort"""
+    __tablename__ = "shopfloor_users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, nullable=False, index=True)
+    display_name = Column(String, nullable=True)
+    password_hash = Column(String, nullable=False)
+    role = Column(String, nullable=False)  # admin / produktion / qs / einrichter
+    aktiv = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_login = Column(DateTime, nullable=True)

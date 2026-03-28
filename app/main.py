@@ -5,7 +5,8 @@ from datetime import datetime
 
 from .database import engine, Base, SessionLocal
 from .models import User, Article, Process, Characteristic, Measurement, Batch, Machine
-from .auth import hash_pin, verify_pin
+from .auth import hash_pin, verify_pin, hash_password, verify_password, generate_token, verify_token
+from .models import ShopfloorUser
 from .spc import calculate_spc
 from .models import ProductionRun
 
@@ -36,6 +37,17 @@ def startup():
             Machine(machine_id="MAPLAN-SILIKON-04", status="setup"),
         ]
         db.add_all(machines)
+        db.commit()
+
+    # Admin-User anlegen falls nicht vorhanden
+    if db.query(ShopfloorUser).count() == 0:
+        admin = ShopfloorUser(
+            username="benny",
+            display_name="Benny (Admin)",
+            password_hash="pbkdf2:obLD1OX2obLD1OX2obLD1CUREKRpfs1s6AYzD/KU+hPsrdqIKJinGVPbvbYHhWAt",
+            role="admin",
+        )
+        db.add(admin)
         db.commit()
 
     db.close()
@@ -179,12 +191,18 @@ def get_characteristics(process_id: str, db: Session = Depends(get_db)):
 def create_measurement(
     characteristic_id: str,
     value: str,
+    charge_nr: str = None,
+    maschine: str = None,
+    operator: str = None,
     db: Session = Depends(get_db)
 ):
     measurement = Measurement(
         characteristic_id=characteristic_id,
         value=value,
-        timestamp=str(datetime.utcnow())
+        timestamp=str(datetime.utcnow()),
+        charge_nr=charge_nr,
+        maschine=maschine,
+        operator=operator,
     )
     db.add(measurement)
     db.commit()
@@ -194,9 +212,21 @@ def create_measurement(
 
 @app.get("/measurements/{characteristic_id}")
 def get_measurements(characteristic_id: str, db: Session = Depends(get_db)):
-    return db.query(Measurement).filter(
+    measurements = db.query(Measurement).filter(
         Measurement.characteristic_id == characteristic_id
-    ).all()
+    ).order_by(Measurement.timestamp).all()
+    return [
+        {
+            "id": str(m.id),
+            "characteristic_id": str(m.characteristic_id),
+            "value": m.value,
+            "timestamp": m.timestamp,
+            "charge_nr": m.charge_nr,
+            "maschine": m.maschine,
+            "operator": m.operator,
+        }
+        for m in measurements
+    ]
 
 
 # BATCHES
@@ -500,6 +530,119 @@ def get_defects(artikelnummer: str = None, db: Session = Depends(get_db)):
         for e in entries
     ]
 
+# ─── CHARGENPROTOKOLL ────────────────────────────────────────────────────────
+
+@app.get("/chargenprotokoll/{charge_nr}")
+def get_chargenprotokoll(charge_nr: str, db: Session = Depends(get_db)):
+    """Alle Daten zu einer Charge: Messungen, Fehler, Prüfprotokoll"""
+
+    # SPC-Messungen
+    measurements = db.query(Measurement).filter(
+        Measurement.charge_nr == charge_nr
+    ).order_by(Measurement.timestamp).all()
+
+    # Fehlersammelkarten
+    defects = db.query(DefectEntry).filter(
+        DefectEntry.chargen_nr == charge_nr
+    ).order_by(DefectEntry.created_at).all()
+
+    # Prüfprotokoll
+    inspection_logs = db.query(InspectionLog).filter(
+        InspectionLog.charge_nr == charge_nr
+    ).order_by(InspectionLog.created_at).all()
+
+    # Produktionsläufe (über article lookup)
+    nio_gesamt = sum([
+        e.luft_fliess + e.wkzg_verschmutzung + e.blasen + e.material_fehlt +
+        e.zusatzteil_feder + e.dichtkantenfehler + e.stechfehler + e.doppelschnitt +
+        e.fremdkoerper_stippen + e.werkzeugfehler + e.abfall + e.platzer +
+        e.blech_nio + e.rohling + e.sonstige
+        for e in defects
+    ])
+    geprueft_gesamt = sum(e.geprueft for e in defects)
+
+    return {
+        "charge_nr": charge_nr,
+        "zusammenfassung": {
+            "messungen": len(measurements),
+            "fehlersammelkarten": len(defects),
+            "pruefprotokolle": len(inspection_logs),
+            "nio_gesamt": nio_gesamt,
+            "geprueft_gesamt": geprueft_gesamt,
+            "nio_pct": round(nio_gesamt / geprueft_gesamt * 100, 2) if geprueft_gesamt else 0,
+        },
+        "messungen": [
+            {
+                "id": str(m.id),
+                "characteristic_id": str(m.characteristic_id),
+                "value": m.value,
+                "timestamp": m.timestamp,
+                "maschine": m.maschine,
+                "operator": m.operator,
+            }
+            for m in measurements
+        ],
+        "fehler": [
+            {
+                "id": e.id,
+                "datum": e.datum,
+                "schicht": e.schicht,
+                "maschine": e.maschine,
+                "operator": e.operator,
+                "geprueft": e.geprueft,
+                "nio_gesamt": (
+                    e.luft_fliess + e.wkzg_verschmutzung + e.blasen + e.material_fehlt +
+                    e.zusatzteil_feder + e.dichtkantenfehler + e.stechfehler + e.doppelschnitt +
+                    e.fremdkoerper_stippen + e.werkzeugfehler + e.abfall + e.platzer +
+                    e.blech_nio + e.rohling + e.sonstige
+                ),
+                "fehlerarten": {k: v for k, v in {
+                    "Luft-/Fließfehler": e.luft_fliess,
+                    "Blasen": e.blasen,
+                    "Dichtkantenfehler": e.dichtkantenfehler,
+                    "Stechfehler": e.stechfehler,
+                    "Fremdkörper/Stippen": e.fremdkoerper_stippen,
+                    "Sonstige": e.sonstige,
+                }.items() if v > 0},
+            }
+            for e in defects
+        ],
+        "pruefprotokoll": [
+            {
+                "id": l.id,
+                "status": l.status,
+                "bemerkung": l.bemerkung,
+                "operator": l.operator,
+                "messwert": l.messwert,
+                "durchgefuehrt_um": str(l.durchgefuehrt_um) if l.durchgefuehrt_um else None,
+            }
+            for l in inspection_logs
+        ],
+    }
+
+
+@app.get("/chargen")
+def list_chargen(db: Session = Depends(get_db)):
+    """Alle bekannten Chargennummern aus Messungen + Fehlersammelkarten"""
+    from sqlalchemy import union_all, select, literal
+
+    chargen = set()
+
+    # Aus Messungen
+    for m in db.query(Measurement.charge_nr).filter(Measurement.charge_nr != None).distinct():
+        chargen.add(m.charge_nr)
+
+    # Aus Fehlersammelkarten
+    for e in db.query(DefectEntry.chargen_nr).filter(DefectEntry.chargen_nr != None).distinct():
+        chargen.add(e.chargen_nr)
+
+    # Aus Maschinen (aktive Charge)
+    for mac in db.query(Machine).filter(Machine.charge != None):
+        chargen.add(mac.charge)
+
+    return sorted(list(chargen))
+
+
 # ─── PRÜFPLAN ────────────────────────────────────────────────────────────────
 
 from .models import InspectionPlan, InspectionLog
@@ -582,6 +725,7 @@ def create_inspection_log(data: dict, db: Session = Depends(get_db)):
         status=data.get("status", "durchgefuehrt"),
         messwert=data.get("messwert"),
         bemerkung=data.get("bemerkung"),
+        charge_nr=data.get("charge_nr"),
         faellig_um=dt.fromisoformat(data["faellig_um"]) if data.get("faellig_um") else None,
         durchgefuehrt_um=dt.utcnow(),
     )
@@ -595,6 +739,9 @@ def create_inspection_log(data: dict, db: Session = Depends(get_db)):
             characteristic_id=characteristic_id,
             value=str(messwert),
             timestamp=str(dt.utcnow()),
+            charge_nr=data.get("charge_nr"),
+            maschine=data.get("maschine"),
+            operator=data.get("operator"),
         )
         db.add(measurement)
 
@@ -655,3 +802,284 @@ def clear_all_data(db: Session = Depends(get_db)):
 
     db.commit()
     return {"message": "Bereinigung abgeschlossen", "deleted": deleted}
+
+# ─── ARTIKELMAPPE ────────────────────────────────────────────────────────────
+
+from .models import ArticleDocument
+import os, shutil
+
+DOCS_DIR = "/mnt/data/docs"
+
+DOC_TYPEN = {
+    "zeichnung":           "Zeichnung",
+    "pap":                 "Prozessablaufplan (PAP)",
+    "einstellbericht":     "Einstellbericht",
+    "pruefplan":           "Prüfplan-Dokument",
+    "qpa":                 "QPA",
+    "reklamation":         "Reklamationsbericht",
+    "fehlermerkmalkatalog":"Fehlermerkmalkatalog",
+}
+
+
+@app.get("/artikelmappe/{artikelnummer}")
+def get_artikelmappe(artikelnummer: str, db: Session = Depends(get_db)):
+    """Vollständige Artikelmappe: Stammdaten + Dokumente + SPC-Übersicht"""
+
+    # Stammdaten
+    article = db.query(Article).filter(
+        Article.artikelnummer == artikelnummer
+    ).first()
+
+    # Dokumente
+    docs = db.query(ArticleDocument).filter(
+        ArticleDocument.artikelnummer == artikelnummer
+    ).order_by(ArticleDocument.doc_typ, ArticleDocument.created_at.desc()).all()
+
+    # Prüfmerkmale mit letztem Cpk
+    processes = db.query(Process).filter(
+        Process.article_id == article.id if article else None
+    ).all() if article else []
+
+    merkmale_overview = []
+    for proc in processes:
+        chars = db.query(Characteristic).filter(
+            Characteristic.process_id == proc.id
+        ).all()
+        for c in chars:
+            measurements = db.query(Measurement).filter(
+                Measurement.characteristic_id == c.id
+            ).all()
+            values = [float(m.value) for m in measurements if m.value]
+            cpk = None
+            status = "keine Daten"
+            if len(values) >= 5:
+                from .spc import calculate_spc
+                try:
+                    spc = calculate_spc(values, float(c.tol_plus), float(c.tol_minus), float(c.sollwert))
+                    cpk = spc["cpk"]
+                    status = spc["status"]
+                except:
+                    pass
+            merkmale_overview.append({
+                "prozess": proc.name,
+                "merkmal": c.name,
+                "sollwert": c.sollwert,
+                "tol_plus": c.tol_plus,
+                "tol_minus": c.tol_minus,
+                "messmittel": c.messmittel,
+                "frequenz": c.frequenz,
+                "n_messungen": len(values),
+                "cpk": cpk,
+                "status": status,
+            })
+
+    return {
+        "artikelnummer": artikelnummer,
+        "stammdaten": {
+            "bezeichnung": article.bezeichnung if article else None,
+            "material": article.material if article else None,
+            "werkzeug": article.werkzeug if article else None,
+            "kavitaeten": article.kavitaeten if article else None,
+            "revision": article.revision if article else None,
+        } if article else None,
+        "dokumente": [
+            {
+                "id": d.id,
+                "doc_typ": d.doc_typ,
+                "doc_typ_label": DOC_TYPEN.get(d.doc_typ, d.doc_typ),
+                "bezeichnung": d.bezeichnung,
+                "revision": d.revision,
+                "dateiname": d.dateiname,
+                "notiz": d.notiz,
+                "erstellt_von": d.erstellt_von,
+                "created_at": str(d.created_at),
+                "download_url": f"/docs/{d.dateiname}" if d.dateiname else None,
+            }
+            for d in docs
+        ],
+        "pruefmerkmale": merkmale_overview,
+    }
+
+
+@app.post("/artikelmappe/{artikelnummer}/upload")
+async def upload_document(
+    artikelnummer: str,
+    doc_typ: str,
+    bezeichnung: str = "",
+    revision: str = "",
+    notiz: str = "",
+    erstellt_von: str = "",
+    file: bytes = None,
+    db: Session = Depends(get_db),
+    request = None
+):
+    from fastapi import Request, UploadFile, File, Form
+    return {"message": "Verwende den Multipart-Endpoint /artikelmappe/upload"}
+
+
+from fastapi import UploadFile, File, Form
+
+@app.post("/artikelmappe/upload")
+async def upload_document_multipart(
+    artikelnummer: str = Form(...),
+    doc_typ: str = Form(...),
+    bezeichnung: str = Form(""),
+    revision: str = Form(""),
+    notiz: str = Form(""),
+    erstellt_von: str = Form(""),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    # Ordner anlegen
+    artikel_dir = f"{DOCS_DIR}/{artikelnummer}/{doc_typ}"
+    os.makedirs(artikel_dir, exist_ok=True)
+
+    # Datei speichern
+    safe_name = file.filename.replace(" ", "_")
+    filepath = f"{artikel_dir}/{safe_name}"
+    with open(filepath, "wb") as f:
+        content = await file.read()
+        f.write(content)
+
+    # DB-Eintrag
+    doc = ArticleDocument(
+        artikelnummer=artikelnummer,
+        doc_typ=doc_typ,
+        bezeichnung=bezeichnung or file.filename,
+        revision=revision,
+        dateiname=f"{artikelnummer}/{doc_typ}/{safe_name}",
+        dateipfad=filepath,
+        notiz=notiz,
+        erstellt_von=erstellt_von,
+    )
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+
+    return {"message": "Dokument hochgeladen", "id": doc.id, "dateiname": safe_name}
+
+
+@app.get("/docs/{artikelnummer}/{doc_typ}/{dateiname}")
+async def download_document(artikelnummer: str, doc_typ: str, dateiname: str):
+    from fastapi.responses import FileResponse
+    filepath = f"{DOCS_DIR}/{artikelnummer}/{doc_typ}/{dateiname}"
+    if not os.path.exists(filepath):
+        return {"error": "Datei nicht gefunden"}
+    return FileResponse(filepath, filename=dateiname)
+
+
+@app.delete("/artikelmappe/dokument/{doc_id}")
+def delete_document(doc_id: int, db: Session = Depends(get_db)):
+    doc = db.query(ArticleDocument).filter(ArticleDocument.id == doc_id).first()
+    if doc:
+        # Datei löschen
+        if doc.dateipfad and os.path.exists(doc.dateipfad):
+            os.remove(doc.dateipfad)
+        db.delete(doc)
+        db.commit()
+    return {"message": "Dokument gelöscht"}
+
+
+@app.get("/artikelmappe")
+def list_artikelmappen(db: Session = Depends(get_db)):
+    """Alle Artikel mit Dokumentanzahl"""
+    articles = db.query(Article).all()
+    result = []
+    for a in articles:
+        doc_count = db.query(ArticleDocument).filter(
+            ArticleDocument.artikelnummer == a.artikelnummer
+        ).count()
+        result.append({
+            "artikelnummer": a.artikelnummer,
+            "bezeichnung": a.bezeichnung,
+            "material": a.material,
+            "revision": a.revision,
+            "doc_count": doc_count,
+        })
+    return result
+
+# ─── AUTH / BENUTZER ─────────────────────────────────────────────────────────
+
+@app.post("/auth/login")
+def login_user(data: dict, db: Session = Depends(get_db)):
+    username = data.get("username", "").lower().strip()
+    password = data.get("password", "")
+
+    user = db.query(ShopfloorUser).filter(
+        ShopfloorUser.username == username,
+        ShopfloorUser.aktiv == True
+    ).first()
+
+    if not user or not verify_password(password, user.password_hash):
+        return {"error": "Benutzername oder Passwort falsch"}
+
+    # Last login updaten
+    user.last_login = datetime.utcnow()
+    db.commit()
+
+    token = generate_token(user.id, user.username, user.role)
+
+    return {
+        "token": token,
+        "username": user.username,
+        "display_name": user.display_name or user.username,
+        "role": user.role,
+    }
+
+
+@app.post("/auth/verify")
+def verify_user_token(data: dict):
+    token = data.get("token", "")
+    user_info = verify_token(token)
+    if not user_info:
+        return {"error": "Token ungültig oder abgelaufen"}
+    return user_info
+
+
+@app.get("/auth/users")
+def get_users(db: Session = Depends(get_db)):
+    users = db.query(ShopfloorUser).filter(ShopfloorUser.aktiv == True).all()
+    return [
+        {
+            "id": u.id,
+            "username": u.username,
+            "display_name": u.display_name,
+            "role": u.role,
+            "last_login": str(u.last_login) if u.last_login else None,
+        }
+        for u in users
+    ]
+
+
+@app.post("/auth/users")
+def create_user(data: dict, db: Session = Depends(get_db)):
+    username = data.get("username", "").lower().strip()
+    password = data.get("password", "")
+    role = data.get("role", "produktion")
+
+    if not username or not password:
+        return {"error": "Benutzername und Passwort erforderlich"}
+
+    existing = db.query(ShopfloorUser).filter(ShopfloorUser.username == username).first()
+    if existing:
+        return {"error": "Benutzername bereits vergeben"}
+
+    user = ShopfloorUser(
+        username=username,
+        display_name=data.get("display_name", username),
+        password_hash=hash_password(password),
+        role=role,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return {"message": "Benutzer angelegt", "id": user.id}
+
+
+@app.delete("/auth/users/{user_id}")
+def delete_user(user_id: int, db: Session = Depends(get_db)):
+    user = db.query(ShopfloorUser).filter(ShopfloorUser.id == user_id).first()
+    if user:
+        user.aktiv = False
+        db.commit()
+    return {"message": "Benutzer deaktiviert"}
