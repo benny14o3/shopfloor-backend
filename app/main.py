@@ -535,11 +535,26 @@ def get_defects(artikelnummer: str = None, db: Session = Depends(get_db)):
 @app.get("/chargenprotokoll/{charge_nr}")
 def get_chargenprotokoll(charge_nr: str, db: Session = Depends(get_db)):
     """Alle Daten zu einer Charge: Messungen, Fehler, Prüfprotokoll"""
+    from sqlalchemy import text
+
+    # Fehlende Spalten sicher hinzufügen falls noch nicht vorhanden
+    try:
+        db.execute(text("ALTER TABLE measurements ADD COLUMN IF NOT EXISTS charge_nr VARCHAR"))
+        db.execute(text("ALTER TABLE measurements ADD COLUMN IF NOT EXISTS maschine VARCHAR"))
+        db.execute(text("ALTER TABLE measurements ADD COLUMN IF NOT EXISTS operator VARCHAR"))
+        db.execute(text("ALTER TABLE inspection_logs ADD COLUMN IF NOT EXISTS charge_nr VARCHAR"))
+        db.execute(text("ALTER TABLE inspection_plans ADD COLUMN IF NOT EXISTS characteristic_id VARCHAR"))
+        db.commit()
+    except Exception:
+        db.rollback()
 
     # SPC-Messungen
-    measurements = db.query(Measurement).filter(
-        Measurement.charge_nr == charge_nr
-    ).order_by(Measurement.timestamp).all()
+    try:
+        measurements = db.query(Measurement).filter(
+            Measurement.charge_nr == charge_nr
+        ).order_by(Measurement.timestamp).all()
+    except Exception:
+        measurements = []
 
     # Fehlersammelkarten
     defects = db.query(DefectEntry).filter(
@@ -547,19 +562,21 @@ def get_chargenprotokoll(charge_nr: str, db: Session = Depends(get_db)):
     ).order_by(DefectEntry.created_at).all()
 
     # Prüfprotokoll
-    inspection_logs = db.query(InspectionLog).filter(
-        InspectionLog.charge_nr == charge_nr
-    ).order_by(InspectionLog.created_at).all()
+    try:
+        inspection_logs = db.query(InspectionLog).filter(
+            InspectionLog.charge_nr == charge_nr
+        ).order_by(InspectionLog.created_at).all()
+    except Exception:
+        inspection_logs = []
 
-    # Produktionsläufe (über article lookup)
     nio_gesamt = sum([
-        e.luft_fliess + e.wkzg_verschmutzung + e.blasen + e.material_fehlt +
-        e.zusatzteil_feder + e.dichtkantenfehler + e.stechfehler + e.doppelschnitt +
-        e.fremdkoerper_stippen + e.werkzeugfehler + e.abfall + e.platzer +
-        e.blech_nio + e.rohling + e.sonstige
+        (e.luft_fliess or 0) + (e.wkzg_verschmutzung or 0) + (e.blasen or 0) + (e.material_fehlt or 0) +
+        (e.zusatzteil_feder or 0) + (e.dichtkantenfehler or 0) + (e.stechfehler or 0) + (e.doppelschnitt or 0) +
+        (e.fremdkoerper_stippen or 0) + (e.werkzeugfehler or 0) + (e.abfall or 0) + (e.platzer or 0) +
+        (e.blech_nio or 0) + (e.rohling or 0) + (e.sonstige or 0)
         for e in defects
     ])
-    geprueft_gesamt = sum(e.geprueft for e in defects)
+    geprueft_gesamt = sum((e.geprueft or 0) for e in defects)
 
     return {
         "charge_nr": charge_nr,
@@ -893,7 +910,7 @@ def get_artikelmappe(artikelnummer: str, db: Session = Depends(get_db)):
                 "notiz": d.notiz,
                 "erstellt_von": d.erstellt_von,
                 "created_at": str(d.created_at),
-                "download_url": f"/docs/{d.dateiname}" if d.dateiname else None,
+                "download_url": d.dateipfad if d.dateipfad else None,  # Cloudinary URL
             }
             for d in docs
         ],
@@ -930,16 +947,44 @@ async def upload_document_multipart(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
-    # Ordner anlegen
-    artikel_dir = f"{DOCS_DIR}/{artikelnummer}/{doc_typ}"
-    os.makedirs(artikel_dir, exist_ok=True)
+    import httpx, hashlib, hmac, time
 
-    # Datei speichern
-    safe_name = file.filename.replace(" ", "_")
-    filepath = f"{artikel_dir}/{safe_name}"
-    with open(filepath, "wb") as f:
-        content = await file.read()
-        f.write(content)
+    CLOUD_NAME = "dmtz5pchr"
+    API_KEY    = "778323837518391"
+    API_SECRET = "sE0gLHVE0z6v8iL-yAgYTNpKuGg"
+
+    # Cloudinary signature
+    timestamp = int(time.time())
+    folder = f"shopfloor/{artikelnummer}/{doc_typ}"
+    params_to_sign = f"folder={folder}&timestamp={timestamp}"
+    signature = hmac.new(
+        API_SECRET.encode(),
+        params_to_sign.encode(),
+        hashlib.sha1
+    ).hexdigest()
+
+    file_bytes = await file.read()
+
+    # Upload zu Cloudinary
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"https://api.cloudinary.com/v1_1/{CLOUD_NAME}/raw/upload",
+            data={
+                "api_key": API_KEY,
+                "timestamp": timestamp,
+                "folder": folder,
+                "signature": signature,
+            },
+            files={"file": (file.filename, file_bytes, file.content_type or "application/pdf")},
+            timeout=60,
+        )
+
+    if resp.status_code != 200:
+        return {"error": f"Cloudinary Upload fehlgeschlagen: {resp.text}"}
+
+    cloud_data = resp.json()
+    cloud_url = cloud_data.get("secure_url", "")
+    public_id = cloud_data.get("public_id", "")
 
     # DB-Eintrag
     doc = ArticleDocument(
@@ -947,8 +992,8 @@ async def upload_document_multipart(
         doc_typ=doc_typ,
         bezeichnung=bezeichnung or file.filename,
         revision=revision,
-        dateiname=f"{artikelnummer}/{doc_typ}/{safe_name}",
-        dateipfad=filepath,
+        dateiname=public_id,
+        dateipfad=cloud_url,   # Cloudinary URL
         notiz=notiz,
         erstellt_von=erstellt_von,
     )
@@ -956,16 +1001,14 @@ async def upload_document_multipart(
     db.commit()
     db.refresh(doc)
 
-    return {"message": "Dokument hochgeladen", "id": doc.id, "dateiname": safe_name}
+    return {"message": "Dokument hochgeladen", "id": doc.id, "url": cloud_url}
 
 
 @app.get("/docs/{artikelnummer}/{doc_typ}/{dateiname}")
 async def download_document(artikelnummer: str, doc_typ: str, dateiname: str):
-    from fastapi.responses import FileResponse
-    filepath = f"{DOCS_DIR}/{artikelnummer}/{doc_typ}/{dateiname}"
-    if not os.path.exists(filepath):
-        return {"error": "Datei nicht gefunden"}
-    return FileResponse(filepath, filename=dateiname)
+    """Legacy - redirect zu Cloudinary URL"""
+    from fastapi.responses import RedirectResponse
+    return {"info": "Direktlink aus Artikelmappe verwenden"}
 
 
 @app.delete("/artikelmappe/dokument/{doc_id}")
