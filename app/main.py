@@ -953,14 +953,12 @@ async def upload_document_multipart(
     API_KEY    = "778323837518391"
     API_SECRET = "sE0gLHVE0z6v8iL-yAgYTNpKuGg"
 
-    # Cloudinary signature
+    # Cloudinary signature (SHA1 of params + secret)
     timestamp = int(time.time())
     folder = f"shopfloor/{artikelnummer}/{doc_typ}"
     params_to_sign = f"folder={folder}&timestamp={timestamp}"
-    signature = hmac.new(
-        API_SECRET.encode(),
-        params_to_sign.encode(),
-        hashlib.sha1
+    signature = hashlib.sha1(
+        (params_to_sign + API_SECRET).encode()
     ).hexdigest()
 
     file_bytes = await file.read()
