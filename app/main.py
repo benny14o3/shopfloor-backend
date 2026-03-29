@@ -1108,3 +1108,28 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
         user.aktiv = False
         db.commit()
     return {"message": "Benutzer deaktiviert"}
+
+
+# ─── MASCHINEN VERWALTUNG ────────────────────────────────────────────────────
+
+@app.post("/machines/add")
+def add_machine(data: dict, db: Session = Depends(get_db)):
+    existing = db.query(Machine).filter(Machine.machine_id == data["machine_id"]).first()
+    if existing:
+        return {"error": "Maschine existiert bereits"}
+    machine = Machine(
+        machine_id=data["machine_id"],
+        status="stopped",
+    )
+    db.add(machine)
+    db.commit()
+    return {"message": "Maschine angelegt", "machine_id": data["machine_id"]}
+
+
+@app.delete("/machines/{machine_id}")
+def delete_machine(machine_id: str, db: Session = Depends(get_db)):
+    machine = db.query(Machine).filter(Machine.machine_id == machine_id).first()
+    if machine:
+        db.delete(machine)
+        db.commit()
+    return {"message": "Maschine gelöscht"}
