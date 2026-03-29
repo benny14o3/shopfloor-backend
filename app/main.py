@@ -330,10 +330,21 @@ def get_machines(db: Session = Depends(get_db)):
             "cycle_time": m.cycle_time,
             "fa": m.fa,
             "fa_target": m.fa_target,
-            "charge": m.charge
+            "charge": m.charge,
+            "gruppe": getattr(m, "gruppe", "") or "",
         }
         for m in machines
     ]
+
+
+@app.put("/machines/{machine_id}/gruppe")
+def update_machine_gruppe(machine_id: str, data: dict, db: Session = Depends(get_db)):
+    machine = db.query(Machine).filter(Machine.machine_id == machine_id).first()
+    if not machine:
+        return {"error": "Maschine nicht gefunden"}
+    machine.gruppe = data.get("gruppe", "")
+    db.commit()
+    return {"message": "Gruppe aktualisiert"}
 
 
 @app.post("/machines/status")
@@ -1151,6 +1162,7 @@ def add_machine(data: dict, db: Session = Depends(get_db)):
     machine = Machine(
         machine_id=data["machine_id"],
         status="stopped",
+        gruppe=data.get("gruppe", ""),
     )
     db.add(machine)
     db.commit()
