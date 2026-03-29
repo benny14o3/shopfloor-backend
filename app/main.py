@@ -1195,3 +1195,17 @@ def delete_bom_item(item_id: int, db: Session = Depends(get_db)):
         db.delete(item)
         db.commit()
     return {"message": "Position gelöscht"}
+
+
+@app.delete("/articles/{article_id}")
+def delete_article(article_id: str, db: Session = Depends(get_db)):
+    from sqlalchemy import text
+    # Alle abhängigen Daten löschen
+    db.execute(text(f"DELETE FROM measurements WHERE characteristic_id IN (SELECT id FROM characteristics WHERE process_id IN (SELECT id FROM processes WHERE article_id = '{article_id}'))"))
+    db.execute(text(f"DELETE FROM characteristics WHERE process_id IN (SELECT id FROM processes WHERE article_id = '{article_id}')"))
+    db.execute(text(f"DELETE FROM processes WHERE article_id = '{article_id}'"))
+    db.execute(text(f"DELETE FROM bom_items WHERE artikelnummer = (SELECT artikelnummer FROM articles WHERE id = '{article_id}')"))
+    db.execute(text(f"DELETE FROM article_documents WHERE artikelnummer = (SELECT artikelnummer FROM articles WHERE id = '{article_id}')"))
+    db.execute(text(f"DELETE FROM articles WHERE id = '{article_id}'"))
+    db.commit()
+    return {"message": "Artikel gelöscht"}
