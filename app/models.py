@@ -28,6 +28,7 @@ class Article(Base):
     werkzeug = Column(String)
     kavitaeten = Column(Integer)
     revision = Column(String)
+    notiz = Column(Text, nullable=True)
 
 
 class Process(Base):
@@ -214,3 +215,18 @@ class ShopfloorUser(Base):
     aktiv = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login = Column(DateTime, nullable=True)
+
+
+class BomItem(Base):
+    """Stückliste (Bill of Materials) pro Artikel"""
+    __tablename__ = "bom_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    artikelnummer = Column(String, nullable=False, index=True)
+    position = Column(Integer, nullable=True)
+    materialnr = Column(String, nullable=True)
+    materialbezeichnung = Column(String, nullable=True)
+    menge = Column(String, nullable=True)
+    einheit = Column(String, nullable=True)   # kg, g, Stk, m...
+    notiz = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

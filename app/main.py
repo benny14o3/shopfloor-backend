@@ -100,11 +100,12 @@ def login(pin: str, db: Session = Depends(get_db)):
 @app.post("/articles")
 def create_article(
     artikelnummer: str,
-    bezeichnung: str,
-    material: str,
-    werkzeug: str,
-    kavitaeten: int,
-    revision: str,
+    bezeichnung: str = "",
+    material: str = "",
+    werkzeug: str = "",
+    kavitaeten: int = 0,
+    revision: str = "",
+    notiz: str = "",
     db: Session = Depends(get_db)
 ):
     article = Article(
@@ -113,7 +114,8 @@ def create_article(
         material=material,
         werkzeug=werkzeug,
         kavitaeten=kavitaeten,
-        revision=revision
+        revision=revision,
+        notiz=notiz,
     )
     db.add(article)
     db.commit()
@@ -123,7 +125,20 @@ def create_article(
 
 @app.get("/articles")
 def get_articles(db: Session = Depends(get_db)):
-    return db.query(Article).all()
+    articles = db.query(Article).all()
+    return [
+        {
+            "id": str(a.id),
+            "artikelnummer": a.artikelnummer,
+            "bezeichnung": a.bezeichnung,
+            "material": a.material,
+            "werkzeug": a.werkzeug,
+            "kavitaeten": a.kavitaeten,
+            "revision": a.revision,
+            "notiz": getattr(a, "notiz", None),
+        }
+        for a in articles
+    ]
 
 
 # PROZESSE
@@ -1133,3 +1148,50 @@ def delete_machine(machine_id: str, db: Session = Depends(get_db)):
         db.delete(machine)
         db.commit()
     return {"message": "Maschine gelöscht"}
+
+
+# ─── STÜCKLISTE ──────────────────────────────────────────────────────────────
+
+from .models import BomItem
+
+@app.get("/bom/{artikelnummer}")
+def get_bom(artikelnummer: str, db: Session = Depends(get_db)):
+    items = db.query(BomItem).filter(
+        BomItem.artikelnummer == artikelnummer
+    ).order_by(BomItem.position).all()
+    return [
+        {
+            "id": i.id,
+            "position": i.position,
+            "materialnr": i.materialnr,
+            "materialbezeichnung": i.materialbezeichnung,
+            "menge": i.menge,
+            "einheit": i.einheit,
+            "notiz": i.notiz,
+        }
+        for i in items
+    ]
+
+@app.post("/bom/{artikelnummer}")
+def add_bom_item(artikelnummer: str, data: dict, db: Session = Depends(get_db)):
+    item = BomItem(
+        artikelnummer=artikelnummer,
+        position=data.get("position"),
+        materialnr=data.get("materialnr"),
+        materialbezeichnung=data.get("materialbezeichnung"),
+        menge=data.get("menge"),
+        einheit=data.get("einheit"),
+        notiz=data.get("notiz"),
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return {"message": "Position angelegt", "id": item.id}
+
+@app.delete("/bom/{item_id}")
+def delete_bom_item(item_id: int, db: Session = Depends(get_db)):
+    item = db.query(BomItem).filter(BomItem.id == item_id).first()
+    if item:
+        db.delete(item)
+        db.commit()
+    return {"message": "Position gelöscht"}
