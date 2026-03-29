@@ -164,7 +164,9 @@ def create_process(
 
 @app.get("/processes/{article_id}")
 def get_processes(article_id: str, db: Session = Depends(get_db)):
-    return db.query(Process).filter(Process.article_id == article_id).all()
+    return db.query(Process).filter(
+        Process.article_id == article_id
+    ).order_by(Process.nummer).all()
 
 
 # PRÜFMERKMALE
