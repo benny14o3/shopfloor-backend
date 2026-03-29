@@ -172,11 +172,13 @@ def get_processes(article_id: str, db: Session = Depends(get_db)):
 def create_characteristic(
     process_id: str,
     name: str,
-    sollwert: str,
-    tol_plus: str,
-    tol_minus: str,
-    messmittel: str,
-    frequenz: str,
+    sollwert: str = "",
+    tol_plus: str = "",
+    tol_minus: str = "",
+    messmittel: str = "",
+    frequenz: str = "",
+    pruefart: str = "mass",
+    beschreibung: str = "",
     db: Session = Depends(get_db)
 ):
     characteristic = Characteristic(
@@ -186,7 +188,9 @@ def create_characteristic(
         tol_plus=tol_plus,
         tol_minus=tol_minus,
         messmittel=messmittel,
-        frequenz=frequenz
+        frequenz=frequenz,
+        pruefart=pruefart,
+        beschreibung=beschreibung,
     )
     db.add(characteristic)
     db.commit()
@@ -196,9 +200,21 @@ def create_characteristic(
 
 @app.get("/characteristics/{process_id}")
 def get_characteristics(process_id: str, db: Session = Depends(get_db)):
-    return db.query(Characteristic).filter(
-        Characteristic.process_id == process_id
-    ).all()
+    chars = db.query(Characteristic).filter(Characteristic.process_id == process_id).all()
+    return [
+        {
+            "id": str(c.id),
+            "process_id": str(c.process_id),
+            "name": c.name,
+            "sollwert": c.sollwert,
+            "tol_plus": c.tol_plus,
+            "tol_minus": c.tol_minus,
+            "messmittel": c.messmittel,
+            "frequenz": c.frequenz,
+            "pruefart": c.pruefart or "mass",
+        }
+        for c in chars
+    ]
 
 
 # MESSWERTE
@@ -1280,7 +1296,7 @@ def update_characteristic(char_id: str, data: dict, db: Session = Depends(get_db
     char = db.query(Characteristic).filter(Characteristic.id == uuid_lib.UUID(char_id)).first()
     if not char:
         return {"error": "Merkmal nicht gefunden"}
-    for field in ["name","sollwert","tol_plus","tol_minus","messmittel","frequenz"]:
+    for field in ["name","sollwert","tol_plus","tol_minus","messmittel","frequenz","pruefart"]:
         if field in data:
             setattr(char, field, data[field])
     db.commit()

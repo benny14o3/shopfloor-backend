@@ -52,6 +52,9 @@ class Characteristic(Base):
     tol_minus = Column(String)
     messmittel = Column(String)
     frequenz = Column(String)
+    pruefart = Column(String, nullable=True)      # mass / attribut / dokument / sicht
+    beschreibung = Column(String, nullable=True)  # Für attributive Merkmale
+    pruefart = Column(String, nullable=True, default="mass")  # mass / attribut / dokument / sicht
 
 
 class Batch(Base):
