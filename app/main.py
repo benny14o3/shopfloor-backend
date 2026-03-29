@@ -910,7 +910,7 @@ def get_artikelmappe(artikelnummer: str, db: Session = Depends(get_db)):
                 "notiz": d.notiz,
                 "erstellt_von": d.erstellt_von,
                 "created_at": str(d.created_at),
-                "download_url": d.dateipfad if d.dateipfad else None,  # Cloudinary URL
+                "download_url": f"/docs/download/{d.id}" if d.dateipfad else None,
             }
             for d in docs
         ],
@@ -947,51 +947,23 @@ async def upload_document_multipart(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
-    import httpx, hashlib, hmac, time
-
-    CLOUD_NAME = "dmtz5pchr"
-    API_KEY    = "778323837518391"
-    API_SECRET = "sE0gLHVE0z6v8iL-yAgYTNpKuGg"
-
-    # Cloudinary signature (SHA1 of params + secret)
-    timestamp = int(time.time())
-    folder = f"shopfloor/{artikelnummer}/{doc_typ}"
-    params_to_sign = f"folder={folder}&timestamp={timestamp}"
-    signature = hashlib.sha1(
-        (params_to_sign + API_SECRET).encode()
-    ).hexdigest()
+    import base64
 
     file_bytes = await file.read()
+    # Max 10MB
+    if len(file_bytes) > 10 * 1024 * 1024:
+        return {"error": "Datei zu groß (max. 10 MB)"}
 
-    # Upload zu Cloudinary
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            f"https://api.cloudinary.com/v1_1/{CLOUD_NAME}/raw/upload",
-            data={
-                "api_key": API_KEY,
-                "timestamp": timestamp,
-                "folder": folder,
-                "signature": signature,
-            },
-            files={"file": (file.filename, file_bytes, file.content_type or "application/pdf")},
-            timeout=60,
-        )
+    file_b64 = base64.b64encode(file_bytes).decode("utf-8")
+    safe_name = file.filename.replace(" ", "_")
 
-    if resp.status_code != 200:
-        return {"error": f"Cloudinary Upload fehlgeschlagen: {resp.text}"}
-
-    cloud_data = resp.json()
-    cloud_url = cloud_data.get("secure_url", "")
-    public_id = cloud_data.get("public_id", "")
-
-    # DB-Eintrag
     doc = ArticleDocument(
         artikelnummer=artikelnummer,
         doc_typ=doc_typ,
         bezeichnung=bezeichnung or file.filename,
         revision=revision,
-        dateiname=public_id,
-        dateipfad=cloud_url,   # Cloudinary URL
+        dateiname=safe_name,
+        dateipfad=f"base64:{file_b64}",  # Base64 in DB
         notiz=notiz,
         erstellt_von=erstellt_von,
     )
@@ -999,14 +971,26 @@ async def upload_document_multipart(
     db.commit()
     db.refresh(doc)
 
-    return {"message": "Dokument hochgeladen", "id": doc.id, "url": cloud_url}
+    return {"message": "Dokument hochgeladen", "id": doc.id}
 
 
-@app.get("/docs/{artikelnummer}/{doc_typ}/{dateiname}")
-async def download_document(artikelnummer: str, doc_typ: str, dateiname: str):
-    """Legacy - redirect zu Cloudinary URL"""
-    from fastapi.responses import RedirectResponse
-    return {"info": "Direktlink aus Artikelmappe verwenden"}
+@app.get("/docs/download/{doc_id}")
+async def download_document(doc_id: int, db: Session = Depends(get_db)):
+    from fastapi.responses import Response
+    import base64
+
+    doc = db.query(ArticleDocument).filter(ArticleDocument.id == doc_id).first()
+    if not doc:
+        return {"error": "Dokument nicht gefunden"}
+
+    if doc.dateipfad and doc.dateipfad.startswith("base64:"):
+        file_bytes = base64.b64decode(doc.dateipfad[7:])
+        return Response(
+            content=file_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{doc.dateiname}"'}
+        )
+    return {"error": "Datei nicht verfügbar"}
 
 
 @app.delete("/artikelmappe/dokument/{doc_id}")

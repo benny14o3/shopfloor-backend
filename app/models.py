@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -195,7 +195,7 @@ class ArticleDocument(Base):
     bezeichnung = Column(String, nullable=True)
     revision = Column(String, nullable=True)
     dateiname = Column(String, nullable=True)
-    dateipfad = Column(String, nullable=True)  # /mnt/data/docs/...
+    dateipfad = Column(Text, nullable=True)    # Base64-kodierte Datei
     notiz = Column(String, nullable=True)
     erstellt_von = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
