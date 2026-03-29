@@ -1231,3 +1231,44 @@ def delete_article(article_id: str, db: Session = Depends(get_db)):
     db.delete(article)
     db.commit()
     return {"message": "Artikel gelöscht", "artikelnummer": artikelnummer}
+
+
+@app.put("/processes/{process_id}")
+def update_process(process_id: str, data: dict, db: Session = Depends(get_db)):
+    import uuid as uuid_lib
+    proc = db.query(Process).filter(Process.id == uuid_lib.UUID(process_id)).first()
+    if not proc:
+        return {"error": "Prozess nicht gefunden"}
+    if "nummer" in data: proc.nummer = data["nummer"]
+    if "name" in data: proc.name = data["name"]
+    if "maschine" in data: proc.maschine = data["maschine"]
+    db.commit()
+    return {"message": "Prozess aktualisiert"}
+
+
+@app.delete("/processes/{process_id}")
+def delete_process(process_id: str, db: Session = Depends(get_db)):
+    import uuid as uuid_lib
+    proc = db.query(Process).filter(Process.id == uuid_lib.UUID(process_id)).first()
+    if not proc:
+        return {"error": "Prozess nicht gefunden"}
+    # Merkmale + Messungen löschen
+    chars = db.query(Characteristic).filter(Characteristic.process_id == proc.id).all()
+    for char in chars:
+        db.query(Measurement).filter(Measurement.characteristic_id == char.id).delete()
+        db.delete(char)
+    db.delete(proc)
+    db.commit()
+    return {"message": "Prozess gelöscht"}
+
+
+@app.delete("/characteristics/{char_id}")
+def delete_characteristic(char_id: str, db: Session = Depends(get_db)):
+    import uuid as uuid_lib
+    char = db.query(Characteristic).filter(Characteristic.id == uuid_lib.UUID(char_id)).first()
+    if not char:
+        return {"error": "Merkmal nicht gefunden"}
+    db.query(Measurement).filter(Measurement.characteristic_id == char.id).delete()
+    db.delete(char)
+    db.commit()
+    return {"message": "Merkmal gelöscht"}
