@@ -1272,3 +1272,16 @@ def delete_characteristic(char_id: str, db: Session = Depends(get_db)):
     db.delete(char)
     db.commit()
     return {"message": "Merkmal gelöscht"}
+
+
+@app.put("/characteristics/{char_id}")
+def update_characteristic(char_id: str, data: dict, db: Session = Depends(get_db)):
+    import uuid as uuid_lib
+    char = db.query(Characteristic).filter(Characteristic.id == uuid_lib.UUID(char_id)).first()
+    if not char:
+        return {"error": "Merkmal nicht gefunden"}
+    for field in ["name","sollwert","tol_plus","tol_minus","messmittel","frequenz"]:
+        if field in data:
+            setattr(char, field, data[field])
+    db.commit()
+    return {"message": "Merkmal aktualisiert"}
