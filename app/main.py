@@ -1301,3 +1301,148 @@ def update_characteristic(char_id: str, data: dict, db: Session = Depends(get_db
             setattr(char, field, data[field])
     db.commit()
     return {"message": "Merkmal aktualisiert"}
+
+# ─── MASCHINENSTILLSTAND ─────────────────────────────────────────────────────
+
+from .models import MachineStop
+
+STOP_GRUENDE = {
+    "reparatur":   "Reparatur / Störung",
+    "geplant":     "Geplanter Stopp / Wartung",
+    "personal":    "Personalmangel",
+    "kein_auftrag":"Kein Auftrag / Fehlende Teile",
+}
+
+@app.post("/machine-stops/start")
+def start_machine_stop(data: dict, db: Session = Depends(get_db)):
+    # Offenen Stop dieser Maschine schließen falls vorhanden
+    open_stop = db.query(MachineStop).filter(
+        MachineStop.machine_id == data["machine_id"],
+        MachineStop.end_time == None
+    ).first()
+    if open_stop:
+        open_stop.end_time = datetime.utcnow()
+        delta = open_stop.end_time - open_stop.start_time
+        open_stop.dauer_min = int(delta.total_seconds() / 60)
+
+    stop = MachineStop(
+        machine_id=data["machine_id"],
+        grund=data.get("grund", "geplant"),
+        notiz=data.get("notiz", ""),
+        start_time=datetime.utcnow(),
+    )
+    db.add(stop)
+    db.commit()
+    return {"message": "Stillstand gestartet", "id": stop.id}
+
+
+@app.post("/machine-stops/end")
+def end_machine_stop(data: dict, db: Session = Depends(get_db)):
+    stop = db.query(MachineStop).filter(
+        MachineStop.machine_id == data["machine_id"],
+        MachineStop.end_time == None
+    ).first()
+    if stop:
+        stop.end_time = datetime.utcnow()
+        delta = stop.end_time - stop.start_time
+        stop.dauer_min = int(delta.total_seconds() / 60)
+        db.commit()
+    return {"message": "Stillstand beendet"}
+
+
+@app.get("/machine-stops/auswertung/{machine_id}")
+def get_auswertung(machine_id: str, jahr: int = None, db: Session = Depends(get_db)):
+    from sqlalchemy import extract
+    import datetime as dt
+
+    if not jahr:
+        jahr = dt.datetime.utcnow().year
+
+    stops = db.query(MachineStop).filter(
+        MachineStop.machine_id == machine_id,
+        extract("year", MachineStop.start_time) == jahr,
+        MachineStop.dauer_min != None,
+    ).all()
+
+    # Laufzeit aus productions runs
+    runs = db.query(ProductionRun).filter(
+        ProductionRun.machine_id == machine_id,
+        extract("year", ProductionRun.start_time) == jahr,
+    ).all() if hasattr(ProductionRun, 'start_time') else []
+
+    # Stillstand nach Grund
+    by_grund = {}
+    total_stop_min = 0
+    for s in stops:
+        g = s.grund
+        if g not in by_grund:
+            by_grund[g] = {"label": STOP_GRUENDE.get(g, g), "count": 0, "dauer_min": 0}
+        by_grund[g]["count"] += 1
+        by_grund[g]["dauer_min"] += s.dauer_min or 0
+        total_stop_min += s.dauer_min or 0
+
+    # Monatliche Aufschlüsselung
+    monate = {}
+    for s in stops:
+        m = s.start_time.month
+        if m not in monate:
+            monate[m] = {"stops": 0, "dauer_min": 0}
+        monate[m]["stops"] += 1
+        monate[m]["dauer_min"] += s.dauer_min or 0
+
+    # Letzten 10 Stops
+    letzte = db.query(MachineStop).filter(
+        MachineStop.machine_id == machine_id,
+    ).order_by(MachineStop.start_time.desc()).limit(10).all()
+
+    return {
+        "machine_id": machine_id,
+        "jahr": jahr,
+        "total_stops": len(stops),
+        "total_stop_min": total_stop_min,
+        "total_stop_h": round(total_stop_min / 60, 1),
+        "by_grund": list(by_grund.values()),
+        "monate": [{"monat": m, "stops": v["stops"], "dauer_min": v["dauer_min"]} for m, v in sorted(monate.items())],
+        "letzte_stops": [
+            {
+                "id": s.id,
+                "grund": STOP_GRUENDE.get(s.grund, s.grund),
+                "notiz": s.notiz,
+                "start": str(s.start_time),
+                "end": str(s.end_time) if s.end_time else None,
+                "dauer_min": s.dauer_min,
+            }
+            for s in letzte
+        ],
+    }
+
+
+@app.get("/machine-stops/alle")
+def get_alle_auswertung(jahr: int = None, db: Session = Depends(get_db)):
+    """Alle Maschinen im Überblick"""
+    from sqlalchemy import extract
+    import datetime as dt
+
+    if not jahr:
+        jahr = dt.datetime.utcnow().year
+
+    machines = db.query(Machine).all()
+    result = []
+    for mac in machines:
+        stops = db.query(MachineStop).filter(
+            MachineStop.machine_id == mac.machine_id,
+            extract("year", MachineStop.start_time) == jahr,
+            MachineStop.dauer_min != None,
+        ).all()
+        total_min = sum(s.dauer_min or 0 for s in stops)
+        result.append({
+            "machine_id": mac.machine_id,
+            "status": mac.status,
+            "total_stops": len(stops),
+            "total_stop_h": round(total_min / 60, 1),
+            "top_grund": max(
+                [s.grund for s in stops],
+                key=lambda g: sum(1 for x in stops if x.grund == g)
+            ) if stops else None,
+        })
+    return result

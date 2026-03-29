@@ -233,3 +233,17 @@ class BomItem(Base):
     einheit = Column(String, nullable=True)   # kg, g, Stk, m...
     notiz = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class MachineStop(Base):
+    """Maschinenstillstand-Protokoll"""
+    __tablename__ = "machine_stops"
+
+    id = Column(Integer, primary_key=True, index=True)
+    machine_id = Column(String, nullable=False, index=True)
+    grund = Column(String, nullable=False)   # reparatur / geplant / personal / kein_auftrag
+    notiz = Column(String, nullable=True)
+    start_time = Column(DateTime, nullable=False, default=datetime.utcnow)
+    end_time = Column(DateTime, nullable=True)
+    dauer_min = Column(Integer, nullable=True)  # Dauer in Minuten (berechnet bei Ende)
+    created_at = Column(DateTime, default=datetime.utcnow)
