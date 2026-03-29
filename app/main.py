@@ -1199,13 +1199,35 @@ def delete_bom_item(item_id: int, db: Session = Depends(get_db)):
 
 @app.delete("/articles/{article_id}")
 def delete_article(article_id: str, db: Session = Depends(get_db)):
-    from sqlalchemy import text
-    # Alle abhängigen Daten löschen
-    db.execute(text(f"DELETE FROM measurements WHERE characteristic_id IN (SELECT id FROM characteristics WHERE process_id IN (SELECT id FROM processes WHERE article_id = '{article_id}'))"))
-    db.execute(text(f"DELETE FROM characteristics WHERE process_id IN (SELECT id FROM processes WHERE article_id = '{article_id}')"))
-    db.execute(text(f"DELETE FROM processes WHERE article_id = '{article_id}'"))
-    db.execute(text(f"DELETE FROM bom_items WHERE artikelnummer = (SELECT artikelnummer FROM articles WHERE id = '{article_id}')"))
-    db.execute(text(f"DELETE FROM article_documents WHERE artikelnummer = (SELECT artikelnummer FROM articles WHERE id = '{article_id}')"))
-    db.execute(text(f"DELETE FROM articles WHERE id = '{article_id}'"))
+    import uuid as uuid_lib
+    try:
+        article_uuid = uuid_lib.UUID(article_id)
+    except ValueError:
+        return {"error": "Ungültige Artikel-ID"}
+
+    # Artikel holen
+    article = db.query(Article).filter(Article.id == article_uuid).first()
+    if not article:
+        return {"error": "Artikel nicht gefunden"}
+
+    artikelnummer = article.artikelnummer
+
+    # Prozesse und Merkmale laden
+    processes = db.query(Process).filter(Process.article_id == article_uuid).all()
+    for proc in processes:
+        chars = db.query(Characteristic).filter(Characteristic.process_id == proc.id).all()
+        for char in chars:
+            db.query(Measurement).filter(Measurement.characteristic_id == char.id).delete()
+            db.delete(char)
+        db.delete(proc)
+
+    # Stückliste
+    db.query(BomItem).filter(BomItem.artikelnummer == artikelnummer).delete()
+
+    # Dokumente
+    db.query(ArticleDocument).filter(ArticleDocument.artikelnummer == artikelnummer).delete()
+
+    # Artikel selbst
+    db.delete(article)
     db.commit()
-    return {"message": "Artikel gelöscht"}
+    return {"message": "Artikel gelöscht", "artikelnummer": artikelnummer}
