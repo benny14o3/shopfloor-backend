@@ -722,6 +722,7 @@ def create_inspection_plan(data: dict, db: Session = Depends(get_db)):
         toleranz_minus=data.get("toleranz_minus"),
         sollwert=data.get("sollwert"),
         aktiv=data.get("aktiv", True),
+        pruefart=data.get("pruefart", "mass"),
     )
     db.add(plan)
     db.commit()
@@ -749,6 +750,7 @@ def get_inspection_plans(artikelnummer: str = None, db: Session = Depends(get_db
             "sollwert": p.sollwert,
             "characteristic_id": p.characteristic_id,
             "aktiv": p.aktiv,
+            "pruefart": getattr(p, "pruefart", "mass") or "mass",
         }
         for p in plans
     ]

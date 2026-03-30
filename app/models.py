@@ -169,6 +169,7 @@ class InspectionPlan(Base):
     toleranz_minus = Column(String, nullable=True)
     sollwert = Column(String, nullable=True)
     aktiv = Column(Boolean, default=True)
+    pruefart = Column(String, nullable=True, default="mass")  # mass / attribut / dokument / sicht
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
