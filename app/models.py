@@ -52,9 +52,8 @@ class Characteristic(Base):
     tol_minus = Column(String)
     messmittel = Column(String)
     frequenz = Column(String)
-    pruefart = Column(String, nullable=True)      # mass / attribut / dokument / sicht
-    beschreibung = Column(String, nullable=True)  # Für attributive Merkmale
     pruefart = Column(String, nullable=True, default="mass")  # mass / attribut / dokument / sicht
+    beschreibung = Column(String, nullable=True)  # Für attributive Merkmale
 
 
 class Batch(Base):
@@ -248,4 +247,52 @@ class MachineStop(Base):
     start_time = Column(DateTime, nullable=False, default=datetime.utcnow)
     end_time = Column(DateTime, nullable=True)
     dauer_min = Column(Integer, nullable=True)  # Dauer in Minuten (berechnet bei Ende)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Fertigungsauftrag(Base):
+    """Fertigungsauftrag — zentrales Objekt der Prozessführung"""
+    __tablename__ = "fertigungsauftraege"
+
+    id = Column(Integer, primary_key=True, index=True)
+    fa_nr = Column(String, nullable=False, index=True)
+    artikelnummer = Column(String, nullable=False)
+    artikel_id = Column(String, nullable=True)
+    charge_nr = Column(String, nullable=True)
+    machine_id = Column(String, nullable=True)
+    soll_menge = Column(Integer, nullable=True)
+    ist_menge = Column(Integer, default=0)
+    status = Column(String, default="offen")  # offen / läuft / fertig / gesperrt
+    gestartet_von = Column(String, nullable=True)
+    gestartet_am = Column(DateTime, nullable=True)
+    beendet_am = Column(DateTime, nullable=True)
+    notiz = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ProzessProtokoll(Base):
+    """Protokoll jedes Prozessschritts / Prüfmerkmals pro FA"""
+    __tablename__ = "prozess_protokoll"
+
+    id = Column(Integer, primary_key=True, index=True)
+    fa_nr = Column(String, nullable=False, index=True)
+    artikelnummer = Column(String, nullable=False)
+    prozess_name = Column(String, nullable=False)
+    prozess_nummer = Column(Integer, nullable=True)
+    merkmal_name = Column(String, nullable=False)
+    characteristic_id = Column(String, nullable=True)
+    pruefart = Column(String, default="mass")   # mass / attribut / dokument / sicht
+    sollwert = Column(String, nullable=True)
+    tol_plus = Column(String, nullable=True)
+    tol_minus = Column(String, nullable=True)
+    messwert = Column(String, nullable=True)    # Zahlenwert oder IO/NIO
+    status = Column(String, default="offen")    # offen / io / nio / übersprungen
+    operator = Column(String, nullable=True)
+    charge_nr = Column(String, nullable=True)
+    maschine = Column(String, nullable=True)
+    bemerkung = Column(String, nullable=True)
+    geprueft_am = Column(DateTime, nullable=True)
+    # Für Intervallprüfungen
+    pruef_intervall = Column(String, nullable=True)  # einmalig / 60min / schicht etc.
+    naechste_pruefung = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

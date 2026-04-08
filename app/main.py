@@ -1462,3 +1462,287 @@ def get_alle_auswertung(jahr: int = None, db: Session = Depends(get_db)):
             ) if stops else None,
         })
     return result
+
+# ═══════════════════════════════════════════════════════════════
+# PROZESSFÜHRUNG — Fertigungsaufträge
+# ═══════════════════════════════════════════════════════════════
+
+from .models import Fertigungsauftrag, ProzessProtokoll
+
+@app.get("/fa")
+def get_alle_fa(status: str = None, db: Session = Depends(get_db)):
+    """Alle Fertigungsaufträge"""
+    q = db.query(Fertigungsauftrag)
+    if status:
+        q = q.filter(Fertigungsauftrag.status == status)
+    fas = q.order_by(Fertigungsauftrag.created_at.desc()).all()
+    return [
+        {
+            "id": f.id,
+            "fa_nr": f.fa_nr,
+            "artikelnummer": f.artikelnummer,
+            "charge_nr": f.charge_nr,
+            "machine_id": f.machine_id,
+            "soll_menge": f.soll_menge,
+            "ist_menge": f.ist_menge,
+            "status": f.status,
+            "gestartet_von": f.gestartet_von,
+            "gestartet_am": str(f.gestartet_am) if f.gestartet_am else None,
+            "beendet_am": str(f.beendet_am) if f.beendet_am else None,
+            "notiz": f.notiz,
+            "created_at": str(f.created_at),
+        }
+        for f in fas
+    ]
+
+
+@app.post("/fa")
+def create_fa(data: dict, db: Session = Depends(get_db)):
+    """Neuen Fertigungsauftrag anlegen"""
+    fa = Fertigungsauftrag(
+        fa_nr=data["fa_nr"],
+        artikelnummer=data["artikelnummer"],
+        artikel_id=data.get("artikel_id"),
+        charge_nr=data.get("charge_nr"),
+        machine_id=data.get("machine_id"),
+        soll_menge=data.get("soll_menge"),
+        status="offen",
+        notiz=data.get("notiz"),
+    )
+    db.add(fa)
+    db.commit()
+    db.refresh(fa)
+    return {"message": "FA angelegt", "id": fa.id, "fa_nr": fa.fa_nr}
+
+
+@app.post("/fa/{fa_id}/starten")
+def fa_starten(fa_id: int, data: dict, db: Session = Depends(get_db)):
+    """FA starten — initialisiert alle Prozessschritte aus dem Artikelstamm"""
+    fa = db.query(Fertigungsauftrag).filter(Fertigungsauftrag.id == fa_id).first()
+    if not fa:
+        return {"error": "FA nicht gefunden"}
+
+    fa.status = "läuft"
+    fa.gestartet_von = data.get("operator", "")
+    fa.gestartet_am = datetime.utcnow()
+    if data.get("machine_id"):
+        fa.machine_id = data["machine_id"]
+
+    # Alle Prozesse + Merkmale aus Artikelstamm laden und als Protokolleinträge anlegen
+    articles = db.query(Article).filter(Article.artikelnummer == fa.artikelnummer).all()
+    if articles:
+        article = articles[0]
+        processes = db.query(Process).filter(
+            Process.article_id == article.id
+        ).order_by(Process.nummer).all()
+
+        for proc in processes:
+            chars = db.query(Characteristic).filter(
+                Characteristic.process_id == proc.id
+            ).all()
+            for char in chars:
+                # Prüfintervall bestimmen
+                pruef_intervall = char.frequenz or "einmalig"
+
+                eintrag = ProzessProtokoll(
+                    fa_nr=fa.fa_nr,
+                    artikelnummer=fa.artikelnummer,
+                    prozess_name=proc.name,
+                    prozess_nummer=proc.nummer,
+                    merkmal_name=char.name,
+                    characteristic_id=str(char.id),
+                    pruefart=char.pruefart or "mass",
+                    sollwert=char.sollwert,
+                    tol_plus=char.tol_plus,
+                    tol_minus=char.tol_minus,
+                    status="offen",
+                    maschine=fa.machine_id,
+                    charge_nr=fa.charge_nr,
+                    pruef_intervall=pruef_intervall,
+                )
+                db.add(eintrag)
+
+    db.commit()
+    return {"message": "FA gestartet", "fa_nr": fa.fa_nr}
+
+
+@app.get("/fa/{fa_nr}/protokoll")
+def get_fa_protokoll(fa_nr: str, db: Session = Depends(get_db)):
+    """Alle Protokolleinträge eines FA — gruppiert nach Prozess"""
+    eintraege = db.query(ProzessProtokoll).filter(
+        ProzessProtokoll.fa_nr == fa_nr
+    ).order_by(ProzessProtokoll.prozess_nummer, ProzessProtokoll.id).all()
+
+    fa = db.query(Fertigungsauftrag).filter(
+        Fertigungsauftrag.fa_nr == fa_nr
+    ).first()
+
+    # Gruppieren nach Prozess
+    prozesse = {}
+    for e in eintraege:
+        key = f"{e.prozess_nummer}_{e.prozess_name}"
+        if key not in prozesse:
+            prozesse[key] = {
+                "prozess_name": e.prozess_name,
+                "prozess_nummer": e.prozess_nummer,
+                "merkmale": []
+            }
+        prozesse[key]["merkmale"].append({
+            "id": e.id,
+            "merkmal_name": e.merkmal_name,
+            "characteristic_id": e.characteristic_id,
+            "pruefart": e.pruefart,
+            "sollwert": e.sollwert,
+            "tol_plus": e.tol_plus,
+            "tol_minus": e.tol_minus,
+            "messwert": e.messwert,
+            "status": e.status,
+            "operator": e.operator,
+            "geprueft_am": str(e.geprueft_am) if e.geprueft_am else None,
+            "pruef_intervall": e.pruef_intervall,
+            "naechste_pruefung": str(e.naechste_pruefung) if e.naechste_pruefung else None,
+            "bemerkung": e.bemerkung,
+        })
+
+    return {
+        "fa": {
+            "id": fa.id if fa else None,
+            "fa_nr": fa_nr,
+            "artikelnummer": fa.artikelnummer if fa else "",
+            "charge_nr": fa.charge_nr if fa else "",
+            "machine_id": fa.machine_id if fa else "",
+            "soll_menge": fa.soll_menge if fa else None,
+            "status": fa.status if fa else "unbekannt",
+            "gestartet_von": fa.gestartet_von if fa else "",
+            "gestartet_am": str(fa.gestartet_am) if fa and fa.gestartet_am else None,
+        },
+        "prozesse": list(prozesse.values()),
+        "gesamt": len(eintraege),
+        "offen": sum(1 for e in eintraege if e.status == "offen"),
+        "io": sum(1 for e in eintraege if e.status == "io"),
+        "nio": sum(1 for e in eintraege if e.status == "nio"),
+    }
+
+
+@app.post("/fa/protokoll/{eintrag_id}/quittieren")
+def quittiere_eintrag(eintrag_id: int, data: dict, db: Session = Depends(get_db)):
+    """Einen Protokolleintrag quittieren (Messwert + Status setzen)"""
+    eintrag = db.query(ProzessProtokoll).filter(ProzessProtokoll.id == eintrag_id).first()
+    if not eintrag:
+        return {"error": "Eintrag nicht gefunden"}
+
+    messwert = data.get("messwert", "")
+    operator = data.get("operator", "")
+
+    # Status bestimmen
+    if eintrag.pruefart == "mass" and messwert:
+        try:
+            val = float(messwert)
+            soll = float(eintrag.sollwert or 0)
+            tplus = float(eintrag.tol_plus or 0)
+            tminus = float(eintrag.tol_minus or 0)
+            status = "io" if (soll - tminus) <= val <= (soll + tplus) else "nio"
+        except:
+            status = "io"
+    else:
+        # IO/NIO direkt aus messwert
+        status = messwert.lower() if messwert.lower() in ["io", "nio"] else "io"
+
+    eintrag.messwert = messwert
+    eintrag.status = status
+    eintrag.operator = operator
+    eintrag.geprueft_am = datetime.utcnow()
+    eintrag.bemerkung = data.get("bemerkung", "")
+
+    # Nächste Prüfung berechnen bei Intervallen
+    if eintrag.pruef_intervall and "min" in (eintrag.pruef_intervall or "").lower():
+        try:
+            minuten = int(''.join(filter(str.isdigit, eintrag.pruef_intervall)))
+            # Neuen Eintrag für nächste Prüfung anlegen
+            neuer = ProzessProtokoll(
+                fa_nr=eintrag.fa_nr,
+                artikelnummer=eintrag.artikelnummer,
+                prozess_name=eintrag.prozess_name,
+                prozess_nummer=eintrag.prozess_nummer,
+                merkmal_name=eintrag.merkmal_name,
+                characteristic_id=eintrag.characteristic_id,
+                pruefart=eintrag.pruefart,
+                sollwert=eintrag.sollwert,
+                tol_plus=eintrag.tol_plus,
+                tol_minus=eintrag.tol_minus,
+                status="offen",
+                maschine=eintrag.maschine,
+                charge_nr=eintrag.charge_nr,
+                pruef_intervall=eintrag.pruef_intervall,
+                naechste_pruefung=datetime.utcnow() + __import__('datetime').timedelta(minutes=minuten),
+            )
+            db.add(neuer)
+        except:
+            pass
+
+    # Messwert auch in SPC speichern wenn Maßprüfung und characteristic_id vorhanden
+    if eintrag.pruefart == "mass" and eintrag.characteristic_id and messwert:
+        try:
+            from sqlalchemy import text
+            db.execute(text(
+                f"INSERT INTO measurements (id, characteristic_id, value, timestamp, charge_nr, operator) "
+                f"VALUES (gen_random_uuid(), '{eintrag.characteristic_id}', '{messwert}', "
+                f"'{datetime.utcnow().isoformat()}', '{eintrag.charge_nr or ''}', '{operator}')"
+            ))
+        except Exception as e:
+            print(f"SPC-Speicherung fehlgeschlagen: {e}")
+
+    db.commit()
+    return {"message": "Quittiert", "status": status}
+
+
+@app.post("/fa/{fa_id}/beenden")
+def fa_beenden(fa_id: int, data: dict, db: Session = Depends(get_db)):
+    fa = db.query(Fertigungsauftrag).filter(Fertigungsauftrag.id == fa_id).first()
+    if not fa:
+        return {"error": "FA nicht gefunden"}
+    fa.status = "fertig"
+    fa.ist_menge = data.get("ist_menge", fa.ist_menge)
+    fa.beendet_am = datetime.utcnow()
+    db.commit()
+    return {"message": "FA beendet"}
+
+
+@app.get("/fa/faellig")
+def get_faellige_pruefungen(db: Session = Depends(get_db)):
+    """Alle offenen Prüfungen aus laufenden FAs — für Dashboard-Banner"""
+    from sqlalchemy import text
+    now = datetime.utcnow()
+
+    # Laufende FAs
+    laufende_fas = db.query(Fertigungsauftrag).filter(
+        Fertigungsauftrag.status == "läuft"
+    ).all()
+
+    faellig = []
+    for fa in laufende_fas:
+        eintraege = db.query(ProzessProtokoll).filter(
+            ProzessProtokoll.fa_nr == fa.fa_nr,
+            ProzessProtokoll.status == "offen",
+        ).all()
+
+        for e in eintraege:
+            ist_faellig = True
+            if e.naechste_pruefung and e.naechste_pruefung > now:
+                ist_faellig = False
+
+            if ist_faellig:
+                faellig.append({
+                    "eintrag_id": e.id,
+                    "fa_nr": fa.fa_nr,
+                    "artikelnummer": fa.artikelnummer,
+                    "machine_id": fa.machine_id,
+                    "prozess": e.prozess_name,
+                    "merkmal": e.merkmal_name,
+                    "pruefart": e.pruefart,
+                    "sollwert": e.sollwert,
+                    "intervall": e.pruef_intervall,
+                    "faellig_seit": str(e.naechste_pruefung) if e.naechste_pruefung else None,
+                })
+
+    return faellig
