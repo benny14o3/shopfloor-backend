@@ -1476,8 +1476,13 @@ def get_alle_fa(status: str = None, db: Session = Depends(get_db)):
     if status:
         q = q.filter(Fertigungsauftrag.status == status)
     fas = q.order_by(Fertigungsauftrag.created_at.desc()).all()
-    return [
-        {
+    result = []
+    for f in fas:
+        eintraege = db.query(ProzessProtokoll).filter(ProzessProtokoll.fa_nr == f.fa_nr).all()
+        gesamt = len(eintraege)
+        erledigt = sum(1 for e in eintraege if e.status in ["io","nio"])
+        pct = round(erledigt / gesamt * 100) if gesamt else 0
+        result.append({
             "id": f.id,
             "fa_nr": f.fa_nr,
             "artikelnummer": f.artikelnummer,
@@ -1491,9 +1496,11 @@ def get_alle_fa(status: str = None, db: Session = Depends(get_db)):
             "beendet_am": str(f.beendet_am) if f.beendet_am else None,
             "notiz": f.notiz,
             "created_at": str(f.created_at),
-        }
-        for f in fas
-    ]
+            "fortschritt_pct": pct,
+            "gesamt_schritte": gesamt,
+            "erledigte_schritte": erledigt,
+        })
+    return result
 
 
 @app.post("/fa")
